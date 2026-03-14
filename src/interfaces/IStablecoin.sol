@@ -10,12 +10,12 @@ interface IStablecoin {
         address indexed _protocol,
         address indexed _sender
     );
-    event BurnByProtocol(
+    event Burn(
         address indexed _protocol,
         address indexed _receiver,
         uint256 _amount
     );
-    event MintByProtocol(
+    event Mint(
         address indexed _protocol,
         address indexed _receiver,
         uint256 _amount
@@ -36,9 +36,9 @@ interface IStablecoin {
     /// ***********************
     /// * Protocols functions *
     /// ***********************
-    function mintToValidProtocol(uint256 _amount) external;
+    function mint(address account ,uint256 _amount) external;
 
-    function burnFromValidProtocol(uint256 _amount) external;
+    function burn(address account, uint256 _amount) external;
 
     /// *********
     /// * ERC20 *

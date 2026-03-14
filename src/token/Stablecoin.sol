@@ -51,17 +51,17 @@ contract Stablecoin is  IStablecoin, ERC20, Ownable  {
     /// ***********************
 
     /// @dev Protocols can only mint token to themself.
-    function mintToValidProtocol(uint256 _amount) external onlyValidProtocol {
-        _mint(msg.sender, _amount);
+    function mint(address account, uint256 _amount) external onlyValidProtocol {
+        _mint(account, _amount);
 
-        emit MintByProtocol(msg.sender, msg.sender, _amount);
+        emit Mint(msg.sender, account, _amount);
     }
 
     /// @dev Protocols can only burn token themself, no slashing others.
-    function burnFromValidProtocol(uint256 _amount) external onlyValidProtocol {
-        _burn(msg.sender, _amount);
+    function burn(address account, uint256 _amount) external onlyValidProtocol {
+        _burn(account, _amount);
 
-        emit BurnByProtocol(msg.sender, msg.sender, _amount);
+        emit Burn(msg.sender, account, _amount);
     }
 
     /// *********

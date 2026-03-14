@@ -43,7 +43,7 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
 
     /// @dev 24 hours * 60 minutes * 60 seconds
     uint32 private constant SECONDS_PER_DAY = 86_400;
-    uint64 private constant DAYS_PER_YEAR = 365;
+    uint64 private constant SECONDS_PER_YEAR = 365 * SECONDS_PER_DAY;
 
     // Blocks dust-level deposits or borrows.
     uint256 internal constant MIN_OPERATION_AMOUNT = 10_000;
@@ -64,11 +64,10 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
     /// @dev Internal balance used for operational accounting.
     uint256 internal internalOperationBalance;
 
-    /// @dev Last day (in days since epoch) when interest was accrued.
-    uint32 public lastAccrualDay;
+    uint256 public lastAccrual;
 
     /// @dev Daily borrow rate in basis points (derived from APR).
-    uint256 public borrowRatePerDay;
+    uint256 public borrowRatePerSecond;
 
     IStablecoin public immutable StableCoin;
 
@@ -108,17 +107,17 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
             collatToFiatOracle: IHybridFiatPriceFeed(params.collatToFiatOracle),
             minCollatAmount: params.minCollatAmount,
             minBorrowAmount: params.minBorrowAmount,
-            collatTofiatConversionConstant: params.collatTofiatConversion
+            collatTofiatConversionConstant: params.collatTofiatConversion // 10e8
         });
 
-        // Convert yearly rate in basis points to a per-day rate.
-        borrowRatePerDay = uint256(params.borrowRatePerYearBp).mulDiv(
+        // Convert yearly rate in basis points to a per-Second rate.
+        borrowRatePerSecond = uint256(params.borrowRatePerYearBp).mulDiv(
             10 ** 14,
-            DAYS_PER_YEAR,
+            SECONDS_PER_YEAR,
             Math.Rounding.Ceil
         );
 
-        lastAccrualDay = _getDays();
+        lastAccrual = block.timestamp;
     }
 
     function pause() external onlyOwner {
@@ -129,9 +128,174 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
         _unpause();
     }
 
-    function _getDays() private view returns (uint32) {
-        return uint32(block.timestamp) / SECONDS_PER_DAY;
+    function accureDebt() public {
+        _accrueDebt();
     }
+
+    function depositCollateral(address receiver, uint256 amount) external {
+        _accrueDebt();
+        _deposit(msg.sender, receiver, amount);
+    }
+
+    function withdrawCollateral(uint256 amount) external {
+        _accrueDebt();
+        _withdraw(msg.sender, amount);
+    }
+
+      function borrow(uint256 stablecoinAmount) public {
+        _accrueDebt();
+        _borrow(msg.sender, stablecoinAmount);
+    }
+
+    function _accrueDebt() internal {
+        uint256 timeElapsed = block.timestamp - lastAccrual;
+        uint256 totalDebt = aggregateState.totalDebt;
+        if (timeElapsed >= 1) {
+            if (totalDebt > 0) {
+                uint256 interest = (borrowRatePerSecond * timeElapsed).mulDiv(
+                    totalDebt,
+                    10 ** 18
+                );
+
+                if (interest > 0) {
+                    // todo : should we mint the interest now (inform of stablecoin ) or when debt is repayed take that interest
+                    aggregateState.totalDebt += interest;
+                }
+            }
+            lastAccrual = block.timestamp;
+        }
+    }
+
+    function _deposit(
+        address _sender,
+        address _receiver,
+        uint256 _amount
+    ) internal whenNotPaused {
+        require(
+            _amount >= collateralConfig.minCollatAmount,
+            "lessThanMinCollateral"
+        );
+        Account storage account = _accounts[_receiver];
+        account.collateral += _amount;
+        aggregateState.totalCollateral += _amount;
+        IERC20(collateralAsset).safeTransferFrom(
+            _sender,
+            address(this),
+            _amount
+        );
+        emit Deposit(msg.sender, _receiver, _amount);
+    }
+
+    function _withdraw(
+        address _sender,
+        uint256 _amount
+    ) internal whenNotPaused {
+        require(_amount > 0, "zero amount");
+        Account storage account = _accounts[_sender];
+        require(_amount <= _getCollateralAvailableToWithdraw(account), "NotEnoughAvailableCollateral");         
+        uint256 remainingCollateral = account.collateral - _amount;
+        if (
+            remainingCollateral > 0 &&
+            remainingCollateral < collateralConfig.minCollatAmount
+        ) revert LessThanMinCollateralRemaining();
+
+        account.collateral = remainingCollateral;
+        aggregateState.totalCollateral -= _amount;
+        IERC20(collateralAsset).safeTransfer(_sender, _amount);
+    }
+
+    function _borrow(address _borrower, uint256 _amount) internal whenNotPaused {
+          require(_amount >= collateralConfig.minBorrowAmount,"LessThanMinBorrow");
+          Account storage borrowerData = _accounts[_borrower];
+
+          StableCoin.mint(_borrower, _amount);
+    }
+      // 1 eth = 1000 GBP
+      function _getCollateralAvailableToWithdraw(
+        Account memory account
+    ) private view returns (uint256) {
+        uint256 debt = _getDebt(account); // (250 * (10 ** 6) 250250000
+        if (debt == 0) return account.collateral;
+        uint256 safeLoan = _getSafeLoan(account); // 250 * (10 ^ 6)
+
+        if (debt >= safeLoan) return 0; // 250 >= 250
+        return
+            fromFiatToCollat(
+                (safeLoan - debt).mulDiv(
+                    BASIS_POINTS,
+                    ltvConfig.safeLtvBp,
+                    Math.Rounding.Floor
+                )
+            ); 
+    }
+
+    function _getDebt(
+        Account memory account
+    ) private view returns (uint256) {
+        if (_activeLoans.length() > 1) {
+            return
+                _convertSharesToStablecoin(account.creditShares);
+        } else {
+           
+            if (account.creditShares > 0) {
+                return aggregateState.totalDebt;
+            } else {
+                return 0;
+            }
+        }
+    }
+     function _getSafeLoan(
+        Account memory account
+    ) private view returns (uint256) {
+        return
+            fromCollatToStablecoin(account.collateral).mulDiv(
+                ltvConfig.safeLtvBp,
+                BASIS_POINTS
+            );
+    }
+
+     function _convertSharesToStablecoin(
+        uint256 _shares
+    ) private view returns (uint256) {
+        return _convertToStablecoin( _shares, Math.Rounding.Ceil);
+    }
+
+       function _convertToStablecoin(
+        uint256 _shares,
+        Math.Rounding _rounding
+    ) private view returns (uint256) {
+        return
+            _shares.mulDiv(
+                aggregateState.totalDebt + 1,
+                aggregateState.totalCredit + 1,
+                _rounding
+            );
+    }
+
+      function fromCollatToStablecoin(uint256 _amount) internal view returns (uint256) {
+        return
+            _amount.mulDiv(
+                _collatPriceToStable(),
+                collateralConfig.collatTofiatConversionConstant,
+                Math.Rounding.Floor
+            );
+    }
+
+     function _collatPriceToStable() private view returns (uint256) {
+        (, int256 price, , , ) = collateralConfig.collatToFiatOracle.latestRoundData();
+         require(price > 0, "priceLessthanzero");
+        return uint256(price);
+    }
+
+    function fromFiatToCollat(uint256 amount) internal view returns (uint256) {
+        return
+            amount.mulDiv(
+                collateralConfig.collatTofiatConversionConstant,
+                _collatPriceToStable(),
+                Math.Rounding.Floor
+            );
+    }
+
 
     function _validateLtvConfig(
         uint16 _safeLtvBp,

@@ -4,6 +4,13 @@ import {IHybridFiatPriceFeed} from "./Oracle/IHybridFiatPriceFeed.sol";
 
 
 interface IBorrowStable {
+     event Deposit(
+        address indexed sender,
+        address indexed receiver,
+        uint256 amount
+    );
+
+    error LessThanMinCollateralRemaining();
 
     struct Account {
         uint256 creditShares;
