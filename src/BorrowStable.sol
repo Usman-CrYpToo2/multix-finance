@@ -67,10 +67,12 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
 
     address public immutable collateralAsset; // collateral token (e.g. WETH)
 
-    EnumerableSet.AddressSet private _activeLoans;
+    address public immutable Router;
+
+    EnumerableSet.AddressSet private currentUsers;
     mapping(address => Account) internal _accounts;
 
-    /// @notice Initializes the borrow stable engine configuration and core state.
+    /// @notice  the borrow stable engine configuration and core state.
     /// @param params Struct containing stablecoin, collateral, oracle and risk parameters.
     constructor(InitailConsParams memory params) Ownable(params.owner) {
         require(
@@ -78,12 +80,13 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
             "LessThanMinOpAmount"
         );
 
-        _validateLtvConfig(params.safeLtvBp, params.liquidationLtvBp, params.liquidationPenaltyBp);
+        _validateLtvSettings(params.safeLtvBp, params.liquidationLtvBp, params.liquidationPenaltyBp);
 
         require(params.borrowRatePerYearBp <= MAX_BORROW_APR_BP, "BorrowRateTooHigh");
 
         StableCoin = IStablecoin(params.StableCoin);
         collateralAsset = params.collateralAsset;
+        Router = params.router;
 
         ltvConfig = LtvConfig({
             safeLtvBp: params.safeLtvBp,
@@ -104,8 +107,13 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
         lastAccrual = block.timestamp;
     }
 
+    modifier onlyRouter() {
+        require(msg.sender == Router, "InvalidRouter");
+        _;
+    }
     /// @notice Pause all state-changing operations.
     /// @dev Can only be called by the contract owner.
+
     function pause() external onlyOwner {
         _pause();
     }
@@ -118,42 +126,48 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
 
     /// @notice Public entry point to accrue interest on total protocol debt.
     /// @dev Uses lazy accrual based on elapsed time since the last accrual.
-    function accureDebt() public {
-        _accrueDebt();
+    function accureInterest() public {
+        _accureInterest();
     }
 
     /// @notice Deposit collateral on behalf of a receiver.
     /// @param receiver Address whose account receives the collateral.
     /// @param amount Amount of collateral to deposit.
     function depositCollateral(address receiver, uint256 amount) external {
-        _accrueDebt();
+        _accureInterest();
         _deposit(msg.sender, receiver, amount);
     }
 
     /// @notice Withdraw collateral from the caller’s account.
     /// @param amount Amount of collateral to withdraw.
-    function withdrawCollateral(uint256 amount) external {
-        _accrueDebt();
-        _withdraw(msg.sender, amount);
+    function withdrawCollateral(address supplier, uint256 amount) external onlyRouter {
+        _accureInterest();
+        _withdraw(supplier, amount);
     }
 
     /// @notice Borrow stablecoins against the caller’s collateral.
     /// @param stablecoinAmount Amount of stablecoins to borrow.
-    function borrow(uint256 stablecoinAmount) public {
-        _accrueDebt();
-        _borrow(msg.sender, stablecoinAmount);
+    function borrowFiat(address borrower, uint256 stablecoinAmount) public onlyRouter {
+        _accureInterest();
+        _borrowFiat(borrower, stablecoinAmount);
     }
 
-    function repayFiat(address account, uint256 stablecoinAmount) external {
+    function repayFiat(address supplier, address account, uint256 stablecoinAmount) external onlyRouter {
         require(stablecoinAmount > 0, "zero Amount");
         require(account != address(0), "zero address");
-        _accrueDebt();
-        _repay(msg.sender, account, stablecoinAmount);
+        _accureInterest();
+        _repayFiat(supplier, account, stablecoinAmount);
+    }
+
+    function liquidate(address liquidator, address account) external onlyRouter {
+        require(account != address(0), "zero address");
+        _accureInterest();
+        _liquidate(liquidator, account);
     }
 
     /// @dev Accrues interest on total protocol debt based on elapsed time.
     ///      Updates `aggregateState.totalDebt` and `lastAccrual` when needed.
-    function _accrueDebt() internal {
+    function _accureInterest() internal {
         uint256 timeElapsed = block.timestamp - lastAccrual;
         uint256 totalDebt = aggregateState.totalDebt;
         if (timeElapsed >= 1) {
@@ -198,7 +212,7 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
         account.collateral += _amount;
         aggregateState.totalCollateral += _amount;
         IERC20(collateralAsset).safeTransferFrom(_sender, address(this), _amount);
-        emit Deposit(msg.sender, _receiver, _amount);
+        emit Deposit(_sender, _receiver, _amount);
     }
 
     /// @dev Internal helper to withdraw collateral and update accounting.
@@ -210,9 +224,13 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
         require(_amount <= _getCollateralAvailableToWithdraw(account), "NotEnoughAvailableCollateral");
         uint256 remainingCollateral = account.collateral - _amount;
         if (remainingCollateral > 0 && remainingCollateral < collateralConfig.minCollatAmount) {
-            revert LessThanMinCollateralRemaining();
+            if (_getDebt(account) == 0) {
+                remainingCollateral = 0;
+                _amount = account.collateral;
+            } else {
+                revert LessThanMinCollateralRemaining();
+            }
         }
-
         account.collateral = remainingCollateral;
         aggregateState.totalCollateral -= _amount;
         IERC20(collateralAsset).safeTransfer(_sender, _amount);
@@ -222,24 +240,23 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
     /// @dev Internal helper to borrow stablecoins for a borrower.
     /// @param _borrower Address receiving the borrowed stablecoins.
     /// @param _amount Amount of stablecoins to borrow.
-    function _borrow(address _borrower, uint256 _amount) internal whenNotPaused {
+    function _borrowFiat(address _borrower, uint256 _amount) internal whenNotPaused {
         require(_amount >= collateralConfig.minBorrowAmount, "LessThanMinBorrow");
         Account storage account = _accounts[_borrower];
-        require(_checkCollateralAvailableToBorrow(account, _amount), "NotEnoughCollateralToBorrow");
+        require(_checkCollateralAvailableToborrowFiat(account, _amount), "NotEnoughCollateralToBorrow");
         uint256 shares = convertStablecoinToShares(_amount);
-        account.creditShares += shares;
-        aggregateState.totalCredit += shares;
+        account.shares += shares;
+        aggregateState.totalShares += shares;
         aggregateState.totalDebt += _amount;
-        _activeLoans.add(_borrower);
+        currentUsers.add(_borrower);
         StableCoin.mint(_borrower, _amount);
         emit Borrow(_borrower, _amount);
     }
 
-    function _repay(address sender, address _account, uint256 stablecoinAmount) internal whenNotPaused {
+    function _repayFiat(address sender, address _account, uint256 stablecoinAmount) internal whenNotPaused {
         Account storage account = _accounts[_account];
         uint256 userDebt = _getDebt(account);
         require(userDebt > 0, "zero debt");
-
         uint256 amountIn = stablecoinAmount;
         uint256 debtToPay;
         uint256 shares;
@@ -253,8 +270,8 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
             uint256 remainingAmount = userDebt - amountIn;
             if (remainingAmount <= MIN_OPERATION_AMOUNT && internalOpBalance >= remainingAmount) {
                 debtToPay = userDebt;
-                shares = account.creditShares;
-                _activeLoans.remove(_account);
+                shares = account.shares;
+                currentUsers.remove(_account);
                 internalOpBalance -= remainingAmount;
                 debtCovered = remainingAmount;
             } else {
@@ -263,17 +280,32 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
             }
         } else {
             debtToPay = userDebt;
-            shares = account.creditShares;
-            _activeLoans.remove(_account);
+            shares = account.shares;
+            currentUsers.remove(_account);
         }
 
         aggregateState.totalDebt -= debtToPay;
-        aggregateState.totalCredit -= shares;
-        account.creditShares -= shares;
+        aggregateState.totalShares -= shares;
+        account.shares -= shares;
         StableCoin.burn(sender, debtToPay - debtCovered);
         if (debtCovered > 0) {
             StableCoin.burn(address(this), debtCovered);
         }
+        emit Repay(sender, _account, debtToPay, userDebt - debtToPay);
+    }
+
+    function _liquidate(address liquidator, address _account) internal whenNotPaused {
+        Account storage account = _accounts[_account];
+        uint256 userDebt = _getDebt(account);
+        uint256 safeLtvUser = _getSafeLoan(account);
+        require(isLiquidatable(account, userDebt), "DebtisUnderSafeLTV");
+        (uint256 required, uint256 collateralOut) = _getLiquidationDeal(userDebt, safeLtvUser, account.collateral);
+        require(required > 0 && collateralOut > 0, "zero amounts");
+        _repayFiat(liquidator, _account, required);
+        account.collateral -= collateralOut;
+        aggregateState.totalCollateral -= collateralOut;
+        IERC20(collateralAsset).safeTransfer(liquidator, collateralOut);
+        emit Liquidate(liquidator, _account, required, collateralOut);
     }
 
     // 1 eth = 1000 GBP
@@ -290,7 +322,11 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
         return fromFiatToCollat((safeLoan - debt).mulDiv(BASIS_POINTS, ltvConfig.safeLtvBp, Math.Rounding.Floor));
     }
 
-    function _checkCollateralAvailableToBorrow(Account storage account, uint256 _amount) private view returns (bool) {
+    function _checkCollateralAvailableToborrowFiat(Account storage account, uint256 _amount)
+        private
+        view
+        returns (bool)
+    {
         uint256 safeLoan = _getSafeLoan(account);
         uint256 debt = _getDebt(account);
         uint256 availableLoan = safeLoan > debt ? safeLoan - debt : 0;
@@ -304,10 +340,10 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
     /// @param account The account whose debt is being calculated.
     /// @return The stablecoin-denominated debt of the account.
     function _getDebt(Account memory account) private view returns (uint256) {
-        if (_activeLoans.length() > 1) {
-            return _convertSharesToStablecoin(account.creditShares);
+        if (currentUsers.length() > 1) {
+            return _convertSharesToStablecoin(account.shares);
         } else {
-            if (account.creditShares > 0) {
+            if (account.shares > 0) {
                 return aggregateState.totalDebt;
             } else {
                 return 0;
@@ -338,11 +374,11 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
     /// @param _rounding Rounding direction for the division.
     /// @return Stablecoin amount corresponding to the shares.
     function _convertToStablecoin(uint256 _shares, Math.Rounding _rounding) private view returns (uint256) {
-        return _shares.mulDiv(aggregateState.totalDebt + 1, aggregateState.totalCredit + 1, _rounding);
+        return _shares.mulDiv(aggregateState.totalDebt + 1, aggregateState.totalShares + 1, _rounding);
     }
 
     function _convertToShares(uint256 stablecoinAmount, Math.Rounding _rounding) private view returns (uint256) {
-        return stablecoinAmount.mulDiv(aggregateState.totalCredit + 1, aggregateState.totalDebt + 1, _rounding);
+        return stablecoinAmount.mulDiv(aggregateState.totalShares + 1, aggregateState.totalDebt + 1, _rounding);
     }
 
     /// @notice Converts a collateral amount to its stablecoin value using the oracle price.
@@ -369,11 +405,70 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
             amount.mulDiv(collateralConfig.collatTofiatConversionConstant, _collatPriceToStable(), Math.Rounding.Floor);
     }
 
+    function isLiquidatable(Account memory account, uint256 _debt) internal view returns (bool) {
+        return _debt > getLiqLoan(account);
+    }
+
+    function getLiqLoan(Account memory account) internal view returns (uint256) {
+        return fromCollatToStablecoin(account.collateral).mulDiv(ltvConfig.liquidationLtvBp, BASIS_POINTS);
+    }
+
+    function _getLiquidationDeal(uint256 debt, uint256 safeDebt, uint256 collateral)
+        private
+        view
+        returns (uint256 requiredStablecoin, uint256 collateralOut)
+    {
+        uint256 LtvBp = _getLtvRatioBp(debt, collateral);
+
+        if (LtvBp >= ltvConfig.liquidationLtvBp) {
+            if (LtvBp < BASIS_POINTS) {
+                requiredStablecoin = getPartialLiquidationAmount(debt, safeDebt);
+                collateral = getPartialcollateralReward(requiredStablecoin);
+            } else {
+                requiredStablecoin = debt;
+                collateral = collateral;
+            }
+        } else {
+            requiredStablecoin = 0;
+            collateralOut = 0;
+        }
+    }
+
+    function _getLtvRatioBp(uint256 debt, uint256 collateral) internal view returns (uint256) {
+        require(collateral > 0, "zero collateral");
+        return debt.mulDiv(BASIS_POINTS, fromCollatToStablecoin(collateral));
+    }
+
+    function getPartialLiquidationAmount(uint256 _debt, uint256 safeDebt) private view returns (uint256) {
+        // Calculate the exact stablecoin amount to bring the CDP back to health
+        uint256 denominator = getLiquidationDenominator(ltvConfig.safeLtvBp, ltvConfig.liquidationPenaltyBp);
+
+        return (_debt - safeDebt).mulDiv(BASIS_POINTS, denominator, Math.Rounding.Floor);
+    }
+
+    function getLiquidationDenominator(
+        uint16 safeLtvBp, // 70
+        uint16 liquidationPenaltyBp // 5
+    ) private pure returns (uint256) {
+        // 100 - 70 - 3.5 = 26.5
+        return (
+            BASIS_POINTS - safeLtvBp
+                - uint256(safeLtvBp).mulDiv( // 70 * 5 / 100 = 3.5
+                liquidationPenaltyBp, BASIS_POINTS)
+        );
+    }
+
+    function getPartialcollateralReward(uint256 fiatAmount) internal view returns (uint256) {
+        uint256 reward = fiatAmount.mulDiv( // 377.358490566 * 100 + 5 / 100 = 396.2264150943
+        BASIS_POINTS + ltvConfig.liquidationPenaltyBp, BASIS_POINTS, Math.Rounding.Floor);
+        return fromFiatToCollat(reward);
+    }
+
     /// @dev Validates that the provided LTV and liquidation parameters are within safe bounds.
     /// @param _safeLtvBp Safe LTV in basis points.
     /// @param _liquidationLtvBp Liquidation LTV in basis points.
     /// @param _liquidationPenaltyBp Liquidation penalty in basis points.
-    function _validateLtvConfig(uint16 _safeLtvBp, uint16 _liquidationLtvBp, uint16 _liquidationPenaltyBp)
+    function _validateLtvSettings(uint16 _safeLtvBp, uint16 _liquidationLtvBp, uint16 _liquidationPenaltyBp)
         internal
         pure
     {

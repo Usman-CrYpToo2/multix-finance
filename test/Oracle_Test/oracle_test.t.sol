@@ -13,7 +13,7 @@ contract HybridFiatPriceFeedTest is Test {
 
     function setUp() public {
         // Use this test contract as the initial bot.
-        oracle = new HybridFiatPriceFeed(address(this));
+        oracle = new HybridFiatPriceFeed(address(this), address(this));
 
         // Whitelist the pool so it can read prices.
         oracle.setPoolWhitelist(POOL, true);

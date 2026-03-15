@@ -53,7 +53,7 @@ contract HybridFiatPriceFeed is IHybridFiatPriceFeed, Ownable {
     /**
      * @param _initialBot The bot address that pushes prices
      */
-    constructor(address _initialBot) Ownable(msg.sender) {
+    constructor(address _initialBot, address owner) Ownable(owner) {
         live = true;
         authorizedBots[_initialBot] = true;
 
@@ -92,7 +92,7 @@ contract HybridFiatPriceFeed is IHybridFiatPriceFeed, Ownable {
     /// * Admin Functions *
     /// *******************
 
-    function setPoolWhitelist(address _pool, bool _status) external onlyOwner {
+    function setPoolWhitelist(address _pool, bool _status) external onlyBot {
         whitelistedPools[_pool] = _status;
         if (_status == false) {
             poolFxRates[_pool] = 0;
