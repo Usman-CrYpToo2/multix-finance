@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
+
 import {IHybridFiatPriceFeed} from "./Oracle/IHybridFiatPriceFeed.sol";
 
-
 interface IBorrowStable {
-     event Deposit(
-        address indexed sender,
-        address indexed receiver,
-        uint256 amount
-    );
+    event Deposit(address indexed sender, address indexed receiver, uint256 amount);
+
+    event Borrow(address indexed borrower, uint256 indexed stablecoin);
+
+    event Withdraw(address indexed sender, uint256 amount);
 
     error LessThanMinCollateralRemaining();
 
@@ -16,7 +16,6 @@ interface IBorrowStable {
         uint256 creditShares;
         uint256 collateral;
     }
-
 
     /// @dev Configuration for LTV and liquidation risk parameters.
     struct LtvConfig {
@@ -45,15 +44,13 @@ interface IBorrowStable {
         address StableCoin;
         address collateralAsset;
         address collatToFiatOracle;
-
         address owner;
-
-        // config setting 
+        // config setting
         uint256 minBorrowAmount;
         uint256 minCollatAmount;
         uint16 safeLtvBp;
         uint16 liquidationLtvBp;
-        uint16 liquidationPenaltyBp; 
+        uint16 liquidationPenaltyBp;
         uint16 borrowRatePerYearBp;
         uint256 collatTofiatConversion;
     }
