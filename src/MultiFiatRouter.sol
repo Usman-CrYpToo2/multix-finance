@@ -5,15 +5,13 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IMultiFiatFactory} from "./interfaces/IMultiFiatFactory.sol";
 import {IBorrowStable} from "./interfaces/IBorrowStable.sol";
+import {IMultiFiatRouter} from "./interfaces/IMultiFiatRouter.sol";
 
-contract BorrowStable {
+contract MultiFiatRouter is IMultiFiatRouter {
     using SafeERC20 for IERC20;
 
     address public immutable factory;
     address public immutable WETH;
-
-    // Custom Error for gas-efficient reverting
-    error MarketDoesNotExist(address stableCoin);
 
     constructor(address _factory) {
         require(_factory != address(0), "Invalid factory");

@@ -314,11 +314,11 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
     /// @param account The account data used to compute available collateral.
     /// @return The amount of collateral that can be safely withdrawn.
     function _getCollateralAvailableToWithdraw(Account memory account) private view returns (uint256) {
-        uint256 debt = _getDebt(account); // (250 * (10 ** 6) 250250000
+        uint256 debt = _getDebt(account);
         if (debt == 0) return account.collateral;
-        uint256 safeLoan = _getSafeLoan(account); // 250 * (10 ^ 6)
+        uint256 safeLoan = _getSafeLoan(account);
 
-        if (debt >= safeLoan) return 0; // 250 >= 250
+        if (debt >= safeLoan) return 0;
         return fromFiatToCollat((safeLoan - debt).mulDiv(BASIS_POINTS, ltvConfig.safeLtvBp, Math.Rounding.Floor));
     }
 
@@ -423,10 +423,10 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
         if (LtvBp >= ltvConfig.liquidationLtvBp) {
             if (LtvBp < BASIS_POINTS) {
                 requiredStablecoin = getPartialLiquidationAmount(debt, safeDebt);
-                collateral = getPartialcollateralReward(requiredStablecoin);
+                collateralOut = getPartialcollateralReward(requiredStablecoin);
             } else {
                 requiredStablecoin = debt;
-                collateral = collateral;
+                collateralOut = collateral;
             }
         } else {
             requiredStablecoin = 0;
@@ -446,16 +446,8 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
         return (_debt - safeDebt).mulDiv(BASIS_POINTS, denominator, Math.Rounding.Floor);
     }
 
-    function getLiquidationDenominator(
-        uint16 safeLtvBp, // 70
-        uint16 liquidationPenaltyBp // 5
-    ) private pure returns (uint256) {
-        // 100 - 70 - 3.5 = 26.5
-        return (
-            BASIS_POINTS - safeLtvBp
-                - uint256(safeLtvBp).mulDiv( // 70 * 5 / 100 = 3.5
-                liquidationPenaltyBp, BASIS_POINTS)
-        );
+    function getLiquidationDenominator(uint16 safeLtvBp, uint16 liquidationPenaltyBp) private pure returns (uint256) {
+        return (BASIS_POINTS - safeLtvBp - uint256(safeLtvBp).mulDiv(liquidationPenaltyBp, BASIS_POINTS));
     }
 
     function getPartialcollateralReward(uint256 fiatAmount) internal view returns (uint256) {

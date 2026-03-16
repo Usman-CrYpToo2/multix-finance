@@ -11,7 +11,7 @@ contract MultiFiatFactory is IMultiFiatFactory, Ownable {
     // --- State Variables ---
     address public immutable WETH;
     address public immutable MASTER_ORACLE;
-    address public immutable ROUTER;
+    address public ROUTER;
 
     // Maps StableCoin address => Collateral Asset (WETH) => BorrowStable Address
     mapping(address => mapping(address => address)) public getMarket;
@@ -20,12 +20,17 @@ contract MultiFiatFactory is IMultiFiatFactory, Ownable {
     address[] public allMarkets;
 
     /// @notice Set the global WETH and Master Oracle addresses upon factory deployment
-    constructor(address _weth, address _masterOracle, address _router) Ownable(msg.sender) {
+    constructor(address _weth, address _masterOracle) Ownable(msg.sender) {
         require(_weth != address(0), "Invalid WETH Address");
         require(_masterOracle != address(0), "Invalid Oracle Address");
-        ROUTER = _router;
         WETH = _weth;
         MASTER_ORACLE = _masterOracle;
+    }
+
+    function setRouter(address routerAddr) external onlyOwner {
+        require(routerAddr != address(0), "zero address");
+        ROUTER = routerAddr;
+        emit routerUpdated(msg.sender, routerAddr);
     }
 
     /// @notice Deploys a new Synthetic Fiat Token, its paired CDP Engine, and registers it to the Oracle

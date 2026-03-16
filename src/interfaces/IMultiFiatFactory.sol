@@ -24,6 +24,8 @@ interface IMultiFiatFactory {
         address indexed stableCoin, address indexed collateral, address indexed borrowStable, uint256 marketLength
     );
 
+    event routerUpdated(address indexed owner, address indexed router);
+
     // --- State Variable Getters ---
 
     /// @notice Returns the global WETH address used as collateral
