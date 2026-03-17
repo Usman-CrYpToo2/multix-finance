@@ -1,4 +1,3 @@
-// src/components/Web3Provider.tsx
 'use client'
 
 import React, { ReactNode } from 'react'
@@ -8,9 +7,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { State, WagmiProvider } from 'wagmi'
 
 const queryClient = new QueryClient()
-
-// Read env in the client component so Next.js inlines NEXT_PUBLIC_* at build time
-// const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? ''
 
 const projectId = 'caa3ce56c68acc48b670d45608afdfb9';
 
