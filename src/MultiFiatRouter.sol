@@ -35,7 +35,6 @@ contract MultiFiatRouter is IMultiFiatRouter {
         address pool = _getValidMarket(stableCoin);
 
         // Router pulls WETH from the user, then approves the pool, then deposits.
-        // (This ensures the pool's msg.sender is the router, matching your internal _deposit logic)
         IERC20(WETH).safeTransferFrom(msg.sender, address(this), amount);
         IERC20(WETH).forceApprove(pool, amount);
 
@@ -63,7 +62,6 @@ contract MultiFiatRouter is IMultiFiatRouter {
     function repayFiat(address stableCoin, address account, uint256 stablecoinAmount) external {
         address pool = _getValidMarket(stableCoin);
 
-        // User must have approved the POOL directly to spend their stablecoins.
         // Router passes msg.sender as the supplier of the funds.
         IBorrowStable(pool).repayFiat(msg.sender, account, stablecoinAmount);
     }
@@ -73,7 +71,6 @@ contract MultiFiatRouter is IMultiFiatRouter {
     function liquidate(address stableCoin, address account) external {
         address pool = _getValidMarket(stableCoin);
 
-        // User must have approved the POOL directly.
         // The pool calculates the exact dynamic penalty amount and pulls it directly from msg.sender.
         IBorrowStable(pool).liquidate(msg.sender, account);
     }
