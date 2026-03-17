@@ -4,7 +4,7 @@ pragma solidity 0.8.24;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IMultiFiatFactory} from "./interfaces/IMultiFiatFactory.sol";
-import {IBorrowStable} from "./interfaces/IBorrowStable.sol";
+import {ICDPEngine} from "./interfaces/ICDPEngine.sol";
 import {IMultiFiatRouter} from "./interfaces/IMultiFiatRouter.sol";
 
 contract MultiFiatRouter is IMultiFiatRouter {
@@ -38,7 +38,7 @@ contract MultiFiatRouter is IMultiFiatRouter {
         IERC20(WETH).safeTransferFrom(msg.sender, address(this), amount);
         IERC20(WETH).forceApprove(pool, amount);
 
-        IBorrowStable(pool).depositCollateral(receiver, amount);
+        ICDPEngine(pool).depositCollateral(receiver, amount);
     }
 
     /// @notice Withdraw collateral from a specific fiat market.
@@ -46,7 +46,7 @@ contract MultiFiatRouter is IMultiFiatRouter {
         address pool = _getValidMarket(stableCoin);
 
         // Router passes msg.sender as the supplier so the pool knows whose collateral to reduce.
-        IBorrowStable(pool).withdrawCollateral(msg.sender, amount);
+        ICDPEngine(pool).withdrawCollateral(msg.sender, amount);
     }
 
     /// @notice Borrow synthetic fiat against deposited collateral.
@@ -54,7 +54,7 @@ contract MultiFiatRouter is IMultiFiatRouter {
         address pool = _getValidMarket(stableCoin);
 
         // Router passes msg.sender as the borrower. The pool will mint directly to them.
-        IBorrowStable(pool).borrowFiat(msg.sender, stablecoinAmount);
+        ICDPEngine(pool).borrowFiat(msg.sender, stablecoinAmount);
     }
 
     /// @notice Repay synthetic fiat debt.
@@ -63,7 +63,7 @@ contract MultiFiatRouter is IMultiFiatRouter {
         address pool = _getValidMarket(stableCoin);
 
         // Router passes msg.sender as the supplier of the funds.
-        IBorrowStable(pool).repayFiat(msg.sender, account, stablecoinAmount);
+        ICDPEngine(pool).repayFiat(msg.sender, account, stablecoinAmount);
     }
 
     /// @notice Liquidate an undercollateralized CDP.
@@ -72,6 +72,6 @@ contract MultiFiatRouter is IMultiFiatRouter {
         address pool = _getValidMarket(stableCoin);
 
         // The pool calculates the exact dynamic penalty amount and pulls it directly from msg.sender.
-        IBorrowStable(pool).liquidate(msg.sender, account);
+        ICDPEngine(pool).liquidate(msg.sender, account);
     }
 }

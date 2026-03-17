@@ -4,14 +4,14 @@ pragma solidity 0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
 
-import {IBorrowStable} from "../src/interfaces/IBorrowStable.sol";
+import {ICDPEngine} from "../src/interfaces/ICDPEngine.sol";
 import {HybridFiatPriceFeed} from "../src/oracle/HybridFiatPriceFeed.sol";
 import {MultiFiatFactory} from "../src/MultiFiatFactory.sol";
 import {IMultiFiatFactory} from "../src/interfaces/IMultiFiatFactory.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-// Router contract in MultiFiatRouter.sol is named BorrowStable; alias to avoid clash with CDP.
+// Router contract in MultiFiatRouter.sol is named MultiFiatRouter.
 import {MultiFiatRouter} from "../src/MultiFiatRouter.sol";
 
 contract MockWETH is ERC20 {
@@ -22,7 +22,7 @@ contract MockWETH is ERC20 {
     }
 }
 
-contract BorrowStableTest is Test {
+contract CDPEngineTest is Test {
     MultiFiatFactory internal factory;
     MultiFiatRouter internal router;
     HybridFiatPriceFeed internal oracle;
@@ -105,7 +105,7 @@ contract BorrowStableTest is Test {
         router.depositCollateral(gbpStable, user, depositAmount);
         vm.stopPrank();
 
-        (uint256 totalCollateral,,) = IBorrowStable(gbpPool).aggregateState();
+        (uint256 totalCollateral,,) = ICDPEngine(gbpPool).aggregateState();
 
         assertEq(totalCollateral, depositAmount, "totalCollateral should equal deposit");
         assertEq(weth.balanceOf(gbpPool), depositAmount, "pool WETH balance should equal deposit");
@@ -123,7 +123,7 @@ contract BorrowStableTest is Test {
         router.withdrawCollateral(gbpStable, withdrawAmount);
         vm.stopPrank();
 
-        (uint256 totalCollateral,,) = IBorrowStable(gbpPool).aggregateState();
+        (uint256 totalCollateral,,) = ICDPEngine(gbpPool).aggregateState();
 
         assertEq(totalCollateral, depositAmount - withdrawAmount, "totalCollateral should be reduced");
         assertEq(
@@ -156,11 +156,11 @@ contract BorrowStableTest is Test {
         assertEq(IERC20(gbpStable).balanceOf(user), borrowAmount, "user should receive 500 GBP");
 
         // Move time forward 1 year and accrue interest on the pool
-        uint256 start = IBorrowStable(gbpPool).lastAccrual();
+        uint256 start = ICDPEngine(gbpPool).lastAccrual();
         vm.warp(start + 365 days);
-        IBorrowStable(gbpPool).accureInterest();
+        ICDPEngine(gbpPool).accureInterest();
 
-        (, uint256 totalDebtAfter,) = IBorrowStable(gbpPool).aggregateState();
+        (, uint256 totalDebtAfter,) = ICDPEngine(gbpPool).aggregateState();
         console.log("Total debt after 1 year (wei):", totalDebtAfter);
         assertGt(totalDebtAfter, borrowAmount, "debt increased after 1 year accrual");
 
@@ -173,7 +173,7 @@ contract BorrowStableTest is Test {
         vm.prank(user);
         router.withdrawCollateral(gbpStable, withdrawAmount);
 
-        (uint256 totalCollateralRemaining,,) = IBorrowStable(gbpPool).aggregateState();
+        (uint256 totalCollateralRemaining,,) = ICDPEngine(gbpPool).aggregateState();
         assertEq(totalCollateralRemaining, 2 ether - withdrawAmount, "collateral reduced by withdraw");
         assertEq(
             weth.balanceOf(user),
@@ -193,7 +193,7 @@ contract BorrowStableTest is Test {
         router.borrowFiat(gbpStable, borrowAmount);
         vm.stopPrank();
 
-        (, uint256 totalDebtBefore,) = IBorrowStable(gbpPool).aggregateState();
+        (, uint256 totalDebtBefore,) = ICDPEngine(gbpPool).aggregateState();
         assertEq(IERC20(gbpStable).balanceOf(user), borrowAmount, "user has borrowed stablecoins");
 
         // Repay part of the debt: user approves pool and calls router
@@ -203,7 +203,7 @@ contract BorrowStableTest is Test {
         router.repayFiat(gbpStable, user, repayAmount);
         vm.stopPrank();
 
-        (, uint256 totalDebtAfter,) = IBorrowStable(gbpPool).aggregateState();
+        (, uint256 totalDebtAfter,) = ICDPEngine(gbpPool).aggregateState();
         assertEq(totalDebtAfter, totalDebtBefore - repayAmount, "total debt should decrease by repay amount");
         assertEq(
             IERC20(gbpStable).balanceOf(user),
@@ -230,11 +230,11 @@ contract BorrowStableTest is Test {
         assertEq(IERC20(gbpStable).balanceOf(user), borrowAmount, "user borrowed at safe LTV");
 
         // Warp ~9 months so 10% APR pushes debt above 75% of collateral value (750e18)
-        uint256 start = IBorrowStable(gbpPool).lastAccrual();
+        uint256 start = ICDPEngine(gbpPool).lastAccrual();
         vm.warp(start + 270 days);
-        IBorrowStable(gbpPool).accureInterest();
+        ICDPEngine(gbpPool).accureInterest();
 
-        (, uint256 totalDebtAfterAccrual,) = IBorrowStable(gbpPool).aggregateState();
+        (, uint256 totalDebtAfterAccrual,) = ICDPEngine(gbpPool).aggregateState();
         console.log("Total debt after ~9 months:", totalDebtAfterAccrual);
         assertGt(totalDebtAfterAccrual, 750e18, "debt above liquidation threshold (75% of 1000e18)");
 
@@ -259,7 +259,7 @@ contract BorrowStableTest is Test {
         assertGt(weth.balanceOf(liquidator), liquidatorWethBefore, "liquidator received collateral");
 
         // User's position: collateral should be reduced (partially or fully liquidated)
-        (uint256 totalCollateral,,) = IBorrowStable(gbpPool).aggregateState();
+        (uint256 totalCollateral,,) = ICDPEngine(gbpPool).aggregateState();
         assertLt(totalCollateral, 1 ether + 2 ether, "total collateral reduced after liquidation");
     }
 
@@ -274,8 +274,8 @@ contract BorrowStableTest is Test {
         router.depositCollateral(bhdStable, user, bhdDeposit);
         vm.stopPrank();
 
-        (uint256 gbpCollateral,,) = IBorrowStable(gbpPool).aggregateState();
-        (uint256 bhdCollateral,,) = IBorrowStable(bhdPool).aggregateState();
+        (uint256 gbpCollateral,,) = ICDPEngine(gbpPool).aggregateState();
+        (uint256 bhdCollateral,,) = ICDPEngine(bhdPool).aggregateState();
 
         assertEq(gbpCollateral, gbpDeposit, "GBP pool collateral should match GBP deposit");
         assertEq(bhdCollateral, bhdDeposit, "BHD pool collateral should match BHD deposit");
@@ -326,19 +326,19 @@ contract BorrowStableTest is Test {
         }
 
         // Warp 1 year and accrue interest once at the pool level
-        uint256 start = IBorrowStable(gbpPool).lastAccrual();
-        (, uint256 totalDebtAfter,) = IBorrowStable(gbpPool).aggregateState();
+        uint256 start = ICDPEngine(gbpPool).lastAccrual();
+        (, uint256 totalDebtAfter,) = ICDPEngine(gbpPool).aggregateState();
         console.log(totalDebtAfter);
         vm.warp(start + 365 days);
-        IBorrowStable(gbpPool).accureInterest();
-        (, uint256 totalDebtAfter1,) = IBorrowStable(gbpPool).aggregateState();
+        ICDPEngine(gbpPool).accureInterest();
+        (, uint256 totalDebtAfter1,) = ICDPEngine(gbpPool).aggregateState();
         console.log(totalDebtAfter1);
 
         // Refresh oracle to avoid staleness reverts during repay (repay path can read price indirectly in checks)
         oracle.updateEthPrice(1000 * 1e8);
         oracle.updateFxRate(gbpPool, 1e8);
 
-        (, uint256 totalDebtBeforeRepay, uint256 totalSharesBeforeRepay) = IBorrowStable(gbpPool).aggregateState();
+        (, uint256 totalDebtBeforeRepay, uint256 totalSharesBeforeRepay) = ICDPEngine(gbpPool).aggregateState();
         assertGt(totalDebtBeforeRepay, borrowAmount * 2, "debt should have grown with interest");
         assertGt(totalSharesBeforeRepay, 0, "shares should exist");
 
@@ -347,18 +347,18 @@ contract BorrowStableTest is Test {
             deal(gbpStable, users[i], borrowAmount + 51e18); // ensure enough to repay principal + interest
             vm.startPrank(users[i]);
             uint256 userBalBefore = IERC20(gbpStable).balanceOf(users[i]);
-            (, uint256 poolDebtBefore,) = IBorrowStable(gbpPool).aggregateState();
+            (, uint256 poolDebtBefore,) = ICDPEngine(gbpPool).aggregateState();
             router.repayFiat(gbpStable, users[i], type(uint256).max);
             vm.stopPrank();
 
             uint256 userBalAfter = IERC20(gbpStable).balanceOf(users[i]);
-            (, uint256 poolDebtAfter,) = IBorrowStable(gbpPool).aggregateState();
+            (, uint256 poolDebtAfter,) = ICDPEngine(gbpPool).aggregateState();
 
             assertLt(userBalAfter, userBalBefore, "user stable balance should decrease after repay");
             assertLt(poolDebtAfter, poolDebtBefore, "pool debt should decrease after repay");
         }
 
-        (, uint256 totalDebtAfter2, uint256 totalSharesAfter) = IBorrowStable(gbpPool).aggregateState();
+        (, uint256 totalDebtAfter2, uint256 totalSharesAfter) = ICDPEngine(gbpPool).aggregateState();
         assertEq(totalDebtAfter2, 0, "all debt should be repaid");
         assertEq(totalSharesAfter, 0, "all shares should be burned");
     }

@@ -9,11 +9,11 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 // interface
-import {IBorrowStable} from "./interfaces/IBorrowStable.sol";
+import {ICDPEngine} from "./interfaces/ICDPEngine.sol";
 import {IStablecoin} from "./interfaces/IStablecoin.sol";
 import {IHybridFiatPriceFeed} from "./interfaces/Oracle/IHybridFiatPriceFeed.sol";
 
-contract BorrowStable is IBorrowStable, Ownable, Pausable {
+contract CDPEngine is ICDPEngine, Ownable, Pausable {
     using EnumerableSet for EnumerableSet.AddressSet;
     using Math for uint256;
     using SafeERC20 for IERC20;
@@ -72,7 +72,7 @@ contract BorrowStable is IBorrowStable, Ownable, Pausable {
     EnumerableSet.AddressSet private currentUsers;
     mapping(address => Account) internal _accounts;
 
-    /// @notice  the borrow stable engine configuration and core state.
+    /// @notice CDP engine configuration and core state.
     /// @param params Struct containing stablecoin, collateral, oracle and risk parameters.
     constructor(InitailConsParams memory params) Ownable(params.owner) {
         require(

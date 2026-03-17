@@ -3,7 +3,7 @@ pragma solidity 0.8.24;
 
 import {IHybridFiatPriceFeed} from "./Oracle/IHybridFiatPriceFeed.sol";
 
-interface IBorrowStable {
+interface ICDPEngine {
     /// **********
     /// * Events *
     /// **********
