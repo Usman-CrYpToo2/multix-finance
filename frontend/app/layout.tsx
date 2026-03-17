@@ -35,9 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </path>
             </svg>
           </div>
-          {/* Global Navigation Bar */}
           <Navbar />
-          {/* Page Content */}
           <div className="pt-8">
             {children}
           </div>
