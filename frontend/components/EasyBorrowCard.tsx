@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { useConnection, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { erc20Abi, parseEther } from 'viem';
-import { CONTRACT_ADDRESSES } from '@/app/constants/addresses'; // Adjust path if needed
+import { erc20Abi, parseEther, formatEther } from 'viem';
+import { CONTRACT_ADDRESSES } from '@/app/constants/addresses';
 
-// Expanded Minimal ABI to include borrowFiat
+
 const routerAbi = [
   {
     type: 'function',
@@ -30,22 +30,36 @@ const routerAbi = [
   }
 ] as const;
 
+const cdpAbi = [
+  {
+    type: 'function',
+    name: 'ltvConfig',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [
+      { name: 'safeLtvBp', type: 'uint16' },
+      { name: 'liquidationLtvBp', type: 'uint16' },
+      { name: 'liquidationPenaltyBp', type: 'uint16' }
+    ],
+  }
+] as const;
+
+
 export default function EasyBorrowCard() {
   const { address, isConnected } = useConnection();
 
   // Mock prices (We will replace these with real Oracle reads later!)
-  const COLLATERAL_PRICE = 3000; 
-  const STABLECOIN_PRICE = 1; 
+  const COLLATERAL_PRICE = 1000;
+  const STABLECOIN_PRICE = 1.3;
 
-  // State (Changed to strings to allow easy clearing/backspacing in inputs)
   const [depositAmount, setDepositAmount] = useState('1');
   const [borrowAmount, setBorrowAmount] = useState('1000');
   const [autoRebalance, setAutoRebalance] = useState(false);
-  
-  // Track which transaction we are currently executing
+
+  // Track transaction 
   const [txType, setTxType] = useState<'none' | 'approve' | 'deposit' | 'borrow'>('none');
 
-  // --- Blockchain Reads ---
+  
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: CONTRACT_ADDRESSES.WETH,
     abi: erc20Abi,
@@ -54,7 +68,24 @@ export default function EasyBorrowCard() {
     query: { enabled: !!address }
   });
 
-  // --- Blockchain Writes ---
+  // Read WETH Balance
+  const { data: wethBalance, refetch: refetchWethBalance } = useReadContract({
+    address: CONTRACT_ADDRESSES.WETH,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address }
+  });
+
+  const formattedBalance = wethBalance ? formatEther(wethBalance) : '0';
+
+  // Fetch dynamic LTV parameters 
+  const { data: ltvConfigData } = useReadContract({
+    address: CONTRACT_ADDRESSES.GBP_POOL,
+    abi: cdpAbi,
+    functionName: 'ltvConfig',
+  });
+
   const { data: hash, writeContract, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
@@ -65,38 +96,43 @@ export default function EasyBorrowCard() {
       if (txType === 'approve') {
         refetchAllowance(); // Refresh allowance so the UI knows we can deposit
       } else if (txType === 'deposit') {
+        refetchWethBalance()
         setDepositAmount(''); // Clear deposit amount so the UI naturally shifts to Borrow step
       } else if (txType === 'borrow') {
         setBorrowAmount(''); // Clear borrow amount, we are done!
       }
       setTxType('none');
     }
-  }, [isConfirmed, txType, refetchAllowance]);
+  }, [isConfirmed, txType, refetchAllowance, refetchWethBalance]);
 
-  // --- Math & Logic ---
+  // Math & Logic 
   const numDeposit = Number(depositAmount) || 0;
   const numBorrow = Number(borrowAmount) || 0;
-  
+
   const collateralValue = numDeposit * COLLATERAL_PRICE;
   const borrowValue = numBorrow * STABLECOIN_PRICE;
   const currentLTV = collateralValue > 0 ? (borrowValue / collateralValue) * 100 : 0;
 
-  const SAFE_LTV = 70.0;
-  const MAX_LTV = 82.5;
+  // We divide by 100 to convert Basis Points (e.g., 8250) to Percentages (82.5%)
+  const SAFE_LTV = ltvConfigData ? Number(ltvConfigData[0]) / 100 : 0;
+  const MAX_LTV = ltvConfigData ? Number(ltvConfigData[1]) / 100 : 0;
 
   const parsedDeposit = depositAmount ? parseEther(depositAmount) : BigInt(0);
   const parsedBorrow = borrowAmount ? parseEther(borrowAmount) : BigInt(0);
   const needsApproval = allowance !== undefined && parsedDeposit > allowance;
 
-  // --- Dynamic Button State Machine ---
   let buttonText = 'Enter Amounts';
-  let buttonAction = () => {};
+  let buttonAction = () => { };
   let buttonDisabled = true;
+  const isExceedingBalance = numDeposit > Number(formattedBalance);
 
   if (!isConnected) {
     buttonText = 'Connect Wallet';
   } else if (isPending || isConfirming) {
     buttonText = 'Confirming in Wallet...';
+  } else if (isExceedingBalance) {
+    buttonText = 'Insufficient WETH Balance';
+    buttonDisabled = true;
   } else if (numDeposit > 0) {
     // If they have a deposit amount, force the Approve/Deposit sequence first
     if (needsApproval) {
@@ -127,7 +163,7 @@ export default function EasyBorrowCard() {
   } else if (numBorrow > 0) {
     // Once deposit is clear, allow borrowing
     buttonText = '3. Borrow SPK';
-    buttonDisabled = currentLTV >= MAX_LTV; // Prevent executing risky borrows!
+    buttonDisabled = currentLTV >= MAX_LTV; 
     buttonAction = () => {
       setTxType('borrow');
       writeContract({
@@ -147,18 +183,43 @@ export default function EasyBorrowCard() {
     return 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]';
   };
 
+  const handleMaxClick = () => {
+    if (Number(formattedBalance) > 0) {
+      setDepositAmount(formattedBalance);
+    }
+  };
+
+
+  const handleDepositChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    // Only allow numbers and decimals
+    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+      setDepositAmount(val);
+    }
+  };
+
   return (
     <div className="max-w-3xl mx-auto p-6 md:p-8 bg-black/20 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/10 font-sans relative overflow-hidden group">
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
 
       {/* Input Section */}
       <div className="flex flex-col md:flex-row gap-4 mb-8 relative z-10">
-        
+
         {/* Deposit Box */}
-        <div className="flex-1 border border-white/10 rounded-2xl p-5 bg-white/5 hover:bg-white/10 transition-colors">
+        <div className={`flex-1 border rounded-2xl p-5 bg-white/5 transition-colors ${isExceedingBalance ? 'border-pink-500/50 bg-pink-500/5' : 'border-white/10 hover:bg-white/10'}`}>
           <div className="flex justify-between text-sm mb-3 text-zinc-400">
-            <span>Deposit Collateral</span>
-            <button className="text-pink-400 hover:text-pink-300 font-medium transition-colors">Max</button>
+            <span className={isExceedingBalance ? 'text-pink-400' : ''}>Deposit Collateral</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-zinc-500">
+                Balance: {Number(formattedBalance).toFixed(4)} WETH
+              </span>
+              <button
+                onClick={handleMaxClick}
+                className="text-pink-400 hover:text-pink-300 font-medium transition-colors"
+              >
+                Max
+              </button>
+            </div>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/10 shadow-inner">
@@ -169,11 +230,19 @@ export default function EasyBorrowCard() {
               <input
                 type="text"
                 value={depositAmount}
-                onChange={(e) => setDepositAmount(e.target.value)}
+                onChange={handleDepositChange}
                 placeholder="0.00"
-                className="w-32 text-right bg-transparent text-3xl font-bold text-white focus:outline-none placeholder:text-zinc-600"
+                className={`w-32 text-right bg-transparent text-3xl font-bold focus:outline-none placeholder:text-zinc-600 transition-colors ${isExceedingBalance ? 'text-pink-500' : 'text-white'
+                  }`}
               />
-              <div className="text-sm text-zinc-500 mt-1">${collateralValue.toLocaleString()}</div>
+              <div className="text-sm mt-1 flex flex-col items-end">
+                <span className="text-zinc-500">${collateralValue.toLocaleString()}</span>
+                {isExceedingBalance && (
+                  <span className="text-pink-500 font-medium text-xs mt-1 animate-pulse">
+                    Exceeds your balance
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -220,15 +289,16 @@ export default function EasyBorrowCard() {
         {/* Progress Bar Container */}
         <div className="relative h-3 bg-zinc-800/80 rounded-full mb-8 overflow-visible">
           <div className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${getProgressColor(currentLTV)}`} style={{ width: `${Math.min(currentLTV, 100)}%` }}></div>
-          
+
           <div className="absolute top-0 h-full border-l-2 border-indigo-400 z-10" style={{ left: `${SAFE_LTV}%` }}>
             <div className="absolute -top-7 -left-8 text-[10px] font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/30 px-2 py-0.5 rounded shadow-sm whitespace-nowrap backdrop-blur-md">
               Safe LTV ({SAFE_LTV}%)
             </div>
           </div>
 
+          {/* Liquidation Marker (Moved to Bottom) */}
           <div className="absolute top-0 h-full border-l-2 border-pink-500 z-10 shadow-[0_0_5px_rgba(236,72,153,0.8)]" style={{ left: `${MAX_LTV}%` }}>
-            <div className="absolute -top-7 -left-6 text-[10px] font-bold text-pink-300 bg-pink-500/20 border border-pink-500/30 px-2 py-0.5 rounded whitespace-nowrap backdrop-blur-md">
+            <div className="absolute top-5 -left-6 text-[10px] font-bold text-pink-300 bg-pink-500/20 border border-pink-500/30 px-2 py-0.5 rounded whitespace-nowrap backdrop-blur-md">
               Liquidation
             </div>
           </div>
@@ -249,7 +319,7 @@ export default function EasyBorrowCard() {
             Protect your vault. If your LTV approaches the liquidation threshold, the protocol will automatically swap a small portion of your collateral to repay debt.
           </p>
         </div>
-        <button 
+        <button
           onClick={() => setAutoRebalance(!autoRebalance)}
           className={`relative mt-1 inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-300 ease-in-out focus:outline-none ${autoRebalance ? 'bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.6)]' : 'bg-zinc-700'}`}
         >
@@ -258,14 +328,13 @@ export default function EasyBorrowCard() {
       </div>
 
       {/* 🚀 THE ACTION BUTTON 🚀 */}
-      <button 
+      <button
         onClick={buttonAction}
         disabled={buttonDisabled}
-        className={`w-full py-5 rounded-2xl font-bold text-xl transition-all duration-300 relative z-10 overflow-hidden ${
-          buttonDisabled
-            ? 'bg-zinc-800/50 text-zinc-500 cursor-not-allowed border border-white/5' 
-            : 'bg-[#E6007A] hover:bg-pink-500 text-white shadow-[0_0_20px_rgba(230,0,122,0.4)] hover:shadow-[0_0_30px_rgba(236,72,153,0.6)]'
-        }`}
+        className={`w-full py-5 rounded-2xl font-bold text-xl transition-all duration-300 relative z-10 overflow-hidden ${buttonDisabled
+          ? 'bg-zinc-800/50 text-zinc-500 cursor-not-allowed border border-white/5'
+          : 'bg-[#E6007A] hover:bg-pink-500 text-white shadow-[0_0_20px_rgba(230,0,122,0.4)] hover:shadow-[0_0_30px_rgba(236,72,153,0.6)]'
+          }`}
       >
         {buttonText}
       </button>

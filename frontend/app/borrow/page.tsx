@@ -16,13 +16,6 @@ export default function BorrowPage() {
       </div>
       
       <EasyBorrowCard />
-      
-      <div className="max-w-3xl mx-auto mt-6 flex justify-end">
-         <button className="bg-white/10 hover:bg-indigo-600 text-white border border-white/10 hover:border-indigo-500 px-8 py-3 rounded-xl font-semibold transition-all duration-300 hover:shadow-[0_0_20px_rgba(99,102,241,0.4)]">
-           Confirm Transaction
-         </button>
-      </div>
-
     </main>
   )
 }
