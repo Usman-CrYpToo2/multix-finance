@@ -33,7 +33,7 @@ const networks: [AppKitNetwork, ...AppKitNetwork[]] = [mainnet, sepolia, foundry
 const wagmiAdapter = new WagmiAdapter({
   projectId,
   networks,
-  ssr: true // Required for Next.js App Router
+  ssr: false // Required for Next.js App Router
 })
 
 // 5. Initialize the Reown AppKit Modal
@@ -49,8 +49,8 @@ if (typeof window !== 'undefined') {
     },
     
     themeVariables: {
-    "--apkt-accent": "#E6007A", // Changes button color to red
-    "--apkt-color-mix": "#FF0000",
+    "--apkt-accent": "#68389c", // Changes button color to red
+    "--apkt-color-mix": "#3b3640",
     "--apkt-color-mix-strength": 40,
   },
   })

@@ -1,26 +1,145 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useConnection, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { erc20Abi, parseEther } from 'viem';
+import { CONTRACT_ADDRESSES } from '@/app/constants/addresses'; // Adjust path if needed
 
-const EasyBorrowCard = () => {
-  // Mock prices for the UI
-  const COLLATERAL_PRICE = 3000; // e.g., $3000 per ETH
-  const STABLECOIN_PRICE = 1; // $1 per StableCoin
+// Expanded Minimal ABI to include borrowFiat
+const routerAbi = [
+  {
+    type: 'function',
+    name: 'depositCollateral',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'stableCoin', type: 'address' },
+      { name: 'receiver', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'borrowFiat',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'stableCoin', type: 'address' },
+      { name: 'stablecoinAmount', type: 'uint256' },
+    ],
+    outputs: [],
+  }
+] as const;
 
-  // State
-  const [depositAmount, setDepositAmount] = useState(1);
-  const [borrowAmount, setBorrowAmount] = useState(1000);
+export default function EasyBorrowCard() {
+  const { address, isConnected } = useConnection();
+
+  // Mock prices (We will replace these with real Oracle reads later!)
+  const COLLATERAL_PRICE = 3000; 
+  const STABLECOIN_PRICE = 1; 
+
+  // State (Changed to strings to allow easy clearing/backspacing in inputs)
+  const [depositAmount, setDepositAmount] = useState('1');
+  const [borrowAmount, setBorrowAmount] = useState('1000');
   const [autoRebalance, setAutoRebalance] = useState(false);
+  
+  // Track which transaction we are currently executing
+  const [txType, setTxType] = useState<'none' | 'approve' | 'deposit' | 'borrow'>('none');
 
-  const collateralValue = depositAmount * COLLATERAL_PRICE;
-  const borrowValue = borrowAmount * STABLECOIN_PRICE;
+  // --- Blockchain Reads ---
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
+    address: CONTRACT_ADDRESSES.WETH,
+    abi: erc20Abi,
+    functionName: 'allowance',
+    args: address ? [address, CONTRACT_ADDRESSES.ROUTER] : undefined,
+    query: { enabled: !!address }
+  });
+
+  // --- Blockchain Writes ---
+  const { data: hash, writeContract, isPending } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
+
+  // --- Flow Management ---
+  // When a transaction successfully confirms, figure out what to do next
+  useEffect(() => {
+    if (isConfirmed) {
+      if (txType === 'approve') {
+        refetchAllowance(); // Refresh allowance so the UI knows we can deposit
+      } else if (txType === 'deposit') {
+        setDepositAmount(''); // Clear deposit amount so the UI naturally shifts to Borrow step
+      } else if (txType === 'borrow') {
+        setBorrowAmount(''); // Clear borrow amount, we are done!
+      }
+      setTxType('none');
+    }
+  }, [isConfirmed, txType, refetchAllowance]);
+
+  // --- Math & Logic ---
+  const numDeposit = Number(depositAmount) || 0;
+  const numBorrow = Number(borrowAmount) || 0;
+  
+  const collateralValue = numDeposit * COLLATERAL_PRICE;
+  const borrowValue = numBorrow * STABLECOIN_PRICE;
   const currentLTV = collateralValue > 0 ? (borrowValue / collateralValue) * 100 : 0;
 
-  // Protocol Constants
   const SAFE_LTV = 70.0;
   const MAX_LTV = 82.5;
 
-  // Dynamic Progress Bar 
+  const parsedDeposit = depositAmount ? parseEther(depositAmount) : BigInt(0);
+  const parsedBorrow = borrowAmount ? parseEther(borrowAmount) : BigInt(0);
+  const needsApproval = allowance !== undefined && parsedDeposit > allowance;
+
+  // --- Dynamic Button State Machine ---
+  let buttonText = 'Enter Amounts';
+  let buttonAction = () => {};
+  let buttonDisabled = true;
+
+  if (!isConnected) {
+    buttonText = 'Connect Wallet';
+  } else if (isPending || isConfirming) {
+    buttonText = 'Confirming in Wallet...';
+  } else if (numDeposit > 0) {
+    // If they have a deposit amount, force the Approve/Deposit sequence first
+    if (needsApproval) {
+      buttonText = '1. Approve WETH';
+      buttonDisabled = false;
+      buttonAction = () => {
+        setTxType('approve');
+        writeContract({
+          address: CONTRACT_ADDRESSES.WETH,
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [CONTRACT_ADDRESSES.ROUTER, parsedDeposit],
+        });
+      };
+    } else {
+      buttonText = '2. Deposit WETH';
+      buttonDisabled = false;
+      buttonAction = () => {
+        setTxType('deposit');
+        writeContract({
+          address: CONTRACT_ADDRESSES.ROUTER,
+          abi: routerAbi,
+          functionName: 'depositCollateral',
+          args: [CONTRACT_ADDRESSES.GBP_STABLE, address!, parsedDeposit],
+        });
+      };
+    }
+  } else if (numBorrow > 0) {
+    // Once deposit is clear, allow borrowing
+    buttonText = '3. Borrow SPK';
+    buttonDisabled = currentLTV >= MAX_LTV; // Prevent executing risky borrows!
+    buttonAction = () => {
+      setTxType('borrow');
+      writeContract({
+        address: CONTRACT_ADDRESSES.ROUTER,
+        abi: routerAbi,
+        functionName: 'borrowFiat',
+        args: [CONTRACT_ADDRESSES.GBP_STABLE, parsedBorrow],
+      });
+    };
+  }
+
+  // --- UI Helpers ---
   const getProgressColor = (ltv: number) => {
     if (ltv >= MAX_LTV) return 'bg-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.8)]';
     if (ltv >= SAFE_LTV) return 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]';
@@ -30,7 +149,6 @@ const EasyBorrowCard = () => {
 
   return (
     <div className="max-w-3xl mx-auto p-6 md:p-8 bg-black/20 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/10 font-sans relative overflow-hidden group">
-      
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
 
       {/* Input Section */}
@@ -51,8 +169,9 @@ const EasyBorrowCard = () => {
               <input
                 type="text"
                 value={depositAmount}
-                onChange={(e) => setDepositAmount(Number(e.target.value))}
-                className="w-32 text-right bg-transparent text-3xl font-bold text-white focus:outline-none no-arrows"
+                onChange={(e) => setDepositAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-32 text-right bg-transparent text-3xl font-bold text-white focus:outline-none placeholder:text-zinc-600"
               />
               <div className="text-sm text-zinc-500 mt-1">${collateralValue.toLocaleString()}</div>
             </div>
@@ -73,8 +192,9 @@ const EasyBorrowCard = () => {
               <input
                 type="text"
                 value={borrowAmount}
-                onChange={(e) => setBorrowAmount(Number(e.target.value))}
-                className="w-32 text-right bg-transparent text-3xl font-bold text-white focus:outline-none no-arrows"
+                onChange={(e) => setBorrowAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-32 text-right bg-transparent text-3xl font-bold text-white focus:outline-none placeholder:text-zinc-600"
               />
               <div className="text-sm text-zinc-500 mt-1">${borrowValue.toLocaleString()}</div>
             </div>
@@ -99,51 +219,36 @@ const EasyBorrowCard = () => {
 
         {/* Progress Bar Container */}
         <div className="relative h-3 bg-zinc-800/80 rounded-full mb-8 overflow-visible">
-          {/* Active Fill */}
-          <div 
-            className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${getProgressColor(currentLTV)}`}
-            style={{ width: `${Math.min(currentLTV, 100)}%` }}
-          ></div>
-
-          {/* Safe LTV Marker */}
-          <div 
-            className="absolute top-0 h-full border-l-2 border-indigo-400 z-10"
-            style={{ left: `${SAFE_LTV}%` }}
-          >
+          <div className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${getProgressColor(currentLTV)}`} style={{ width: `${Math.min(currentLTV, 100)}%` }}></div>
+          
+          <div className="absolute top-0 h-full border-l-2 border-indigo-400 z-10" style={{ left: `${SAFE_LTV}%` }}>
             <div className="absolute -top-7 -left-8 text-[10px] font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/30 px-2 py-0.5 rounded shadow-sm whitespace-nowrap backdrop-blur-md">
               Safe LTV ({SAFE_LTV}%)
             </div>
           </div>
 
-          {/* Liquidation Marker */}
-          <div 
-            className="absolute top-0 h-full border-l-2 border-pink-500 z-10 shadow-[0_0_5px_rgba(236,72,153,0.8)]"
-            style={{ left: `${MAX_LTV}%` }}
-          >
+          <div className="absolute top-0 h-full border-l-2 border-pink-500 z-10 shadow-[0_0_5px_rgba(236,72,153,0.8)]" style={{ left: `${MAX_LTV}%` }}>
             <div className="absolute -top-7 -left-6 text-[10px] font-bold text-pink-300 bg-pink-500/20 border border-pink-500/30 px-2 py-0.5 rounded whitespace-nowrap backdrop-blur-md">
               Liquidation
             </div>
           </div>
         </div>
 
-        {/* Dynamic Warning for Partial Liquidation */}
         {currentLTV >= MAX_LTV && (
           <div className="mt-2 p-4 bg-pink-500/10 border border-pink-500/30 rounded-xl text-sm text-pink-200 animate-pulse backdrop-blur-md shadow-[0_0_15px_rgba(236,72,153,0.15)]">
-            <strong className="text-pink-400">🚨 Liquidation Triggered:</strong> Instead of losing everything, the protocol will now partially liquidate your collateral to bounce your vault back to the <strong className="text-white">{SAFE_LTV}% Safe LTV</strong>.
+            <strong className="text-pink-400">🚨 Liquidation Risk:</strong> Your current inputs exceed the maximum allowed LTV. Reduce your borrow amount or increase collateral.
           </div>
         )}
       </div>
 
-      {/* Auto-Rebalancing Toggle (Soft Liquidation) */}
-      <div className="border border-indigo-500/30 rounded-2xl p-6 bg-indigo-500/10 flex items-start justify-between relative z-10 backdrop-blur-sm transition-colors hover:bg-indigo-500/20">
+      {/* Auto-Rebalancing Toggle */}
+      <div className="border border-indigo-500/30 rounded-2xl p-6 bg-indigo-500/10 flex items-start justify-between relative z-10 backdrop-blur-sm transition-colors hover:bg-indigo-500/20 mb-8">
         <div className="pr-6">
           <h4 className="font-semibold text-indigo-300 mb-1 text-lg">Enable Auto-Rebalancing</h4>
           <p className="text-sm text-indigo-200/60 leading-relaxed">
-            Protect your vault. If your LTV approaches the liquidation threshold, the protocol will automatically swap a small portion of your collateral to repay debt, preventing costly auction penalties.
+            Protect your vault. If your LTV approaches the liquidation threshold, the protocol will automatically swap a small portion of your collateral to repay debt.
           </p>
         </div>
-        
-        {/* Toggle Switch */}
         <button 
           onClick={() => setAutoRebalance(!autoRebalance)}
           className={`relative mt-1 inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-300 ease-in-out focus:outline-none ${autoRebalance ? 'bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.6)]' : 'bg-zinc-700'}`}
@@ -152,8 +257,26 @@ const EasyBorrowCard = () => {
         </button>
       </div>
 
+      {/* 🚀 THE ACTION BUTTON 🚀 */}
+      <button 
+        onClick={buttonAction}
+        disabled={buttonDisabled}
+        className={`w-full py-5 rounded-2xl font-bold text-xl transition-all duration-300 relative z-10 overflow-hidden ${
+          buttonDisabled
+            ? 'bg-zinc-800/50 text-zinc-500 cursor-not-allowed border border-white/5' 
+            : 'bg-[#E6007A] hover:bg-pink-500 text-white shadow-[0_0_20px_rgba(230,0,122,0.4)] hover:shadow-[0_0_30px_rgba(236,72,153,0.6)]'
+        }`}
+      >
+        {buttonText}
+      </button>
+
+      {/* Success Notification */}
+      {isConfirmed && txType === 'none' && (
+        <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-center text-sm font-medium animate-in fade-in slide-in-from-bottom-2">
+          Transaction successfully confirmed on-chain!
+        </div>
+      )}
+
     </div>
   );
-};
-
-export default EasyBorrowCard;
+}
