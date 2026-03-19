@@ -41,6 +41,22 @@ const cdpAbi = [
       { name: 'liquidationLtvBp', type: 'uint16' },
       { name: 'liquidationPenaltyBp', type: 'uint16' }
     ],
+  },
+
+  {
+    type: 'function',
+    name: 'getUserDebt',
+    inputs: [{ name: '_account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+
+  {
+    type: 'function',
+    name: 'getUserCollateral',
+    inputs: [{ name: '_account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
   }
 ] as const;
 
@@ -86,6 +102,27 @@ export default function EasyBorrowCard() {
     functionName: 'ltvConfig',
   });
 
+  // 3. Read Existing Vault Collateral
+  const { data: rawCollateral, refetch: refetchCollateral } = useReadContract({
+    address: CONTRACT_ADDRESSES.GBP_POOL,
+    abi: cdpAbi,
+    functionName: 'getUserCollateral',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address }
+  });
+
+  // 4. Read Existing Vault Debt
+  const { data: rawDebt, refetch: refetchDebt } = useReadContract({
+    address: CONTRACT_ADDRESSES.GBP_POOL,
+    abi: cdpAbi,
+    functionName: 'getUserDebt',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address }
+  });
+
+  const existingCollateral = rawCollateral ? Number(formatEther(rawCollateral)) : 0;
+  const existingDebt = rawDebt ? Number(formatEther(rawDebt)) : 0;
+
   const { data: hash, writeContract, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
@@ -97,34 +134,51 @@ export default function EasyBorrowCard() {
         refetchAllowance(); // Refresh allowance so the UI knows we can deposit
       } else if (txType === 'deposit') {
         refetchWethBalance()
+        refetchCollateral()
         setDepositAmount(''); // Clear deposit amount so the UI naturally shifts to Borrow step
       } else if (txType === 'borrow') {
+        refetchDebt()
         setBorrowAmount(''); // Clear borrow amount, we are done!
       }
       setTxType('none');
     }
-  }, [isConfirmed, txType, refetchAllowance, refetchWethBalance]);
+  }, [isConfirmed, txType, refetchAllowance, refetchWethBalance, refetchCollateral, refetchDebt]);
 
   // Math & Logic 
+  // --- Math & Logic ---
   const numDeposit = Number(depositAmount) || 0;
   const numBorrow = Number(borrowAmount) || 0;
+  
+  // 1. Calculate the TOTAL Projected Vault
+  const totalProjectedCollateral = existingCollateral + numDeposit;
+  const totalProjectedDebt = existingDebt + numBorrow;
+  
+  const totalCollateralValue = totalProjectedCollateral * COLLATERAL_PRICE;
+  const totalDebtValue = totalProjectedDebt * STABLECOIN_PRICE;
+  
+  // 2. Projected LTV (Existing Vault + New Inputs)
+  const currentLTV = totalCollateralValue > 0 ? (totalDebtValue / totalCollateralValue) * 100 : 0;
 
-  const collateralValue = numDeposit * COLLATERAL_PRICE;
-  const borrowValue = numBorrow * STABLECOIN_PRICE;
-  const currentLTV = collateralValue > 0 ? (borrowValue / collateralValue) * 100 : 0;
+  // 3. Dynamic LTV Rules
+  const SAFE_LTV = ltvConfigData ? Number(ltvConfigData[0]) / 100 : 70.0;
+  const MAX_LTV = ltvConfigData ? Number(ltvConfigData[1]) / 100 : 82.5;
 
-  // We divide by 100 to convert Basis Points (e.g., 8250) to Percentages (82.5%)
-  const SAFE_LTV = ltvConfigData ? Number(ltvConfigData[0]) / 100 : 0;
-  const MAX_LTV = ltvConfigData ? Number(ltvConfigData[1]) / 100 : 0;
+  // 4. Recalculate the REAL Max Borrow Limit 
+  // (Total Allowed Debt based on all collateral MINUS the debt they already have)
+  const maxTotalDebtUSD = totalCollateralValue * (SAFE_LTV / 100);
+  const maxTotalDebtSPK = maxTotalDebtUSD / STABLECOIN_PRICE;
+  const maxBorrowableSPK = Math.max(0, maxTotalDebtSPK - existingDebt);
 
   const parsedDeposit = depositAmount ? parseEther(depositAmount) : BigInt(0);
   const parsedBorrow = borrowAmount ? parseEther(borrowAmount) : BigInt(0);
   const needsApproval = allowance !== undefined && parsedDeposit > allowance;
+  const isExceedingBalance = numDeposit > Number(formattedBalance);
+
+  const isBorrowingTooMuch = currentLTV >= MAX_LTV;
 
   let buttonText = 'Enter Amounts';
   let buttonAction = () => { };
   let buttonDisabled = true;
-  const isExceedingBalance = numDeposit > Number(formattedBalance);
 
   if (!isConnected) {
     buttonText = 'Connect Wallet';
@@ -132,6 +186,10 @@ export default function EasyBorrowCard() {
     buttonText = 'Confirming in Wallet...';
   } else if (isExceedingBalance) {
     buttonText = 'Insufficient WETH Balance';
+    buttonDisabled = true;
+  } else if (isBorrowingTooMuch) {
+    // NEW: Block the transaction if it instantly liquidates them!
+    buttonText = 'LTV Too High!';
     buttonDisabled = true;
   } else if (numDeposit > 0) {
     // If they have a deposit amount, force the Approve/Deposit sequence first
@@ -198,7 +256,23 @@ export default function EasyBorrowCard() {
     }
   };
 
-  return (
+  const handleMaxBorrowClick = () => {
+    if (maxBorrowableSPK > 0) {
+      // Keep the max button auto-filling the valid amount (standard practice)
+      setBorrowAmount((Math.floor(maxBorrowableSPK * 100) / 100).toString());
+    }
+  };
+
+  const handleBorrowChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    
+    // Only allow numbers and empty strings
+    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+      setBorrowAmount(val);
+    }
+  };
+  
+return (
     <div className="max-w-3xl mx-auto p-6 md:p-8 bg-black/20 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/10 font-sans relative overflow-hidden group">
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
 
@@ -236,7 +310,7 @@ export default function EasyBorrowCard() {
                   }`}
               />
               <div className="text-sm mt-1 flex flex-col items-end">
-                <span className="text-zinc-500">${collateralValue.toLocaleString()}</span>
+                <span className="text-zinc-500">${totalCollateralValue.toLocaleString()}</span>
                 {isExceedingBalance && (
                   <span className="text-pink-500 font-medium text-xs mt-1 animate-pulse">
                     Exceeds your balance
@@ -251,6 +325,18 @@ export default function EasyBorrowCard() {
         <div className="flex-1 border border-white/10 rounded-2xl p-5 bg-white/5 hover:bg-white/10 transition-colors">
           <div className="flex justify-between text-sm mb-3 text-zinc-400">
             <span>Borrow</span>
+            <div className="flex items-center gap-3">
+              {/* Show their actual Borrow Limit here! */}
+              <span className="text-xs text-zinc-500">
+                Limit: {maxBorrowableSPK.toFixed(2)} SPK
+              </span>
+              <button
+                onClick={handleMaxBorrowClick}
+                className="text-[#E6007A] hover:text-pink-400 font-medium transition-colors"
+              >
+                Max
+              </button>
+            </div>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/10 shadow-inner">
@@ -261,11 +347,11 @@ export default function EasyBorrowCard() {
               <input
                 type="text"
                 value={borrowAmount}
-                onChange={(e) => setBorrowAmount(e.target.value)}
+                onChange={handleBorrowChange} // Uses the strict handler
                 placeholder="0.00"
                 className="w-32 text-right bg-transparent text-3xl font-bold text-white focus:outline-none placeholder:text-zinc-600"
               />
-              <div className="text-sm text-zinc-500 mt-1">${borrowValue.toLocaleString()}</div>
+              <div className="text-sm text-zinc-500 mt-1">${totalDebtValue.toLocaleString()}</div>
             </div>
           </div>
         </div>
