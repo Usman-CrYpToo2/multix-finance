@@ -4,40 +4,43 @@ import { erc20Abi, parseEther, formatEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '@/constants/addresses';
 
 // --- Constants & ABIs ---
+export const SUPPORTED_ASSETS = {
+  GBP: {
+    id: 'GBP',
+    symbol: 'SPK',
+    poolAddress: CONTRACT_ADDRESSES.GBP_POOL,
+    stableAddress: CONTRACT_ADDRESSES.GBP_STABLE,
+    price: 1.30, // We will make this dynamic from Oracle soon
+  },
+} as const;
+
+type AssetKey = keyof typeof SUPPORTED_ASSETS;
+
 const COLLATERAL_PRICE = 1000;
-const STABLECOIN_PRICE = 1.3;
 
 const routerAbi = [
-  {
-    type: 'function',
-    name: 'depositCollateral',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: 'stableCoin', type: 'address' }, { name: 'receiver', type: 'address' }, { name: 'amount', type: 'uint256' }],
-    outputs: [],
-  },
-  {
-    type: 'function',
-    name: 'borrowFiat',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: 'stableCoin', type: 'address' }, { name: 'stablecoinAmount', type: 'uint256' }],
-    outputs: [],
-  }
+  { type: 'function', name: 'depositCollateral', stateMutability: 'nonpayable', inputs: [{ name: 'stableCoin', type: 'address' }, { name: 'receiver', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [] },
+  { type: 'function', name: 'borrowFiat', stateMutability: 'nonpayable', inputs: [{ name: 'stableCoin', type: 'address' }, { name: 'stablecoinAmount', type: 'uint256' }], outputs: [] }
 ] as const;
 
 const cdpAbi = [
   { type: 'function', name: 'ltvConfig', stateMutability: 'view', inputs: [], outputs: [{ name: 'safeLtvBp', type: 'uint16' }, { name: 'liquidationLtvBp', type: 'uint16' }, { name: 'liquidationPenaltyBp', type: 'uint16' }] },
   { type: 'function', name: 'getUserDebt', inputs: [{ name: '_account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' },
-  { type: 'function', name: 'getUserCollateral', inputs: [{ name: '_account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' }
+  { type: 'function', name: 'getUserCollateral', inputs: [{ name: '_account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' },
+  { type: 'function', name: 'borrowRatePerSecond', inputs: [], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' } // NEW API ADDED
 ] as const;
 
 export function useVaultData() {
   const { address, isConnected } = useConnection();
 
   // --- UI State ---
+  const [selectedAssetId, setSelectedAssetId] = useState<AssetKey>('GBP');
   const [depositAmount, setDepositAmount] = useState('1');
   const [borrowAmount, setBorrowAmount] = useState('100');
   const [autoRebalance, setAutoRebalance] = useState(false);
   const [txType, setTxType] = useState<'none' | 'approve' | 'deposit' | 'borrow'>('none');
+
+  const activeAsset = SUPPORTED_ASSETS[selectedAssetId];
 
   // --- Blockchain Reads ---
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
@@ -49,15 +52,19 @@ export function useVaultData() {
   });
 
   const { data: ltvConfigData } = useReadContract({
-    address: CONTRACT_ADDRESSES.GBP_POOL, abi: cdpAbi, functionName: 'ltvConfig',
+    address: activeAsset.poolAddress, abi: cdpAbi, functionName: 'ltvConfig',
   });
 
   const { data: rawCollateral, refetch: refetchCollateral } = useReadContract({
-    address: CONTRACT_ADDRESSES.GBP_POOL, abi: cdpAbi, functionName: 'getUserCollateral', args: address ? [address] : undefined, query: { enabled: !!address }
+    address: activeAsset.poolAddress, abi: cdpAbi, functionName: 'getUserCollateral', args: address ? [address] : undefined, query: { enabled: !!address }
   });
 
   const { data: rawDebt, refetch: refetchDebt } = useReadContract({
     address: CONTRACT_ADDRESSES.GBP_POOL, abi: cdpAbi, functionName: 'getUserDebt', args: address ? [address] : undefined, query: { enabled: !!address }
+  });
+
+  const { data: rawBorrowRate } = useReadContract({
+    address: activeAsset.poolAddress, abi: cdpAbi, functionName: 'borrowRatePerSecond',
   });
 
   // --- Write Contracts & Wait ---
@@ -69,6 +76,10 @@ export function useVaultData() {
   const existingCollateral = rawCollateral ? Number(formatEther(rawCollateral)) : 0;
   const existingDebt = rawDebt ? Number(formatEther(rawDebt)) : 0;
 
+  // Calculate Borrow Rate (APR)
+  const SECONDS_IN_YEAR = 31536000;
+  const borrowAPR = rawBorrowRate ? (Number(rawBorrowRate) * SECONDS_IN_YEAR) / 1e16 : 0;
+
   const numDeposit = Number(depositAmount) || 0;
   const numBorrow = Number(borrowAmount) || 0;
 
@@ -76,14 +87,15 @@ export function useVaultData() {
   const totalProjectedDebt = existingDebt + numBorrow;
 
   const totalCollateralValue = totalProjectedCollateral * COLLATERAL_PRICE;
-  const totalDebtValue = totalProjectedDebt * STABLECOIN_PRICE;
+  // Dynamic price based on active asset!
+  const totalDebtValue = totalProjectedDebt * activeAsset.price;
 
   const currentLTV = totalCollateralValue > 0 ? (totalDebtValue / totalCollateralValue) * 100 : 0;
   const SAFE_LTV = ltvConfigData ? Number(ltvConfigData[0]) / 100 : 70.0;
   const MAX_LTV = ltvConfigData ? Number(ltvConfigData[1]) / 100 : 82.5;
 
   const currentHF = (existingDebt > 0 && existingCollateral > 0)
-    ? (existingCollateral * COLLATERAL_PRICE) / (existingDebt * STABLECOIN_PRICE)
+    ? (existingCollateral * COLLATERAL_PRICE) / (existingDebt * activeAsset.price)
     : 0;
 
   let hfStatusText = 'Danger';
@@ -91,7 +103,7 @@ export function useVaultData() {
   else if (currentHF >= 1.5) hfStatusText = 'Moderate';
 
   const maxTotalDebtUSD = totalCollateralValue * (SAFE_LTV / 100);
-  const maxTotalDebtSPK = maxTotalDebtUSD / STABLECOIN_PRICE;
+  const maxTotalDebtSPK = maxTotalDebtUSD / activeAsset.price;
   const maxBorrowableSPK = Math.max(0, maxTotalDebtSPK - existingDebt);
 
   const parsedDeposit = depositAmount ? parseEther(depositAmount) : BigInt(0);
@@ -104,7 +116,7 @@ export function useVaultData() {
   useEffect(() => {
     if (isConfirmed) {
       if (txType === 'approve') refetchAllowance();
-      else if (txType === 'deposit') { refetchWethBalance(); refetchCollateral(); setDepositAmount(''); } 
+      else if (txType === 'deposit') { refetchWethBalance(); refetchCollateral(); setDepositAmount(''); }
       else if (txType === 'borrow') { refetchDebt(); setBorrowAmount(''); }
       setTxType('none');
     }
@@ -126,50 +138,51 @@ export function useVaultData() {
   };
 
   // --- Dynamic Button State Machine ---
-  let buttonText = 'Enter Amounts';
-  let buttonAction = () => { };
-  let buttonDisabled = true;
+  const getButtonState = () => {
+    if (!isConnected) return { text: 'Connect Wallet', disabled: true, action: () => { } };
+    if (isPending || isConfirming) return { text: 'Confirming in Wallet...', disabled: true, action: () => { } };
+    if (isExceedingBalance) return { text: 'Insufficient WETH Balance', disabled: true, action: () => { } };
+    if (isBorrowingTooMuch) return { text: 'LTV Too High!', disabled: true, action: () => { } };
+    if (numDeposit === 0 && numBorrow === 0) return { text: 'Enter Amounts', disabled: true, action: () => { } };
 
-  if (!isConnected) {
-    buttonText = 'Connect Wallet';
-  } else if (isPending || isConfirming) {
-    buttonText = 'Confirming in Wallet...';
-  } else if (isExceedingBalance) {
-    buttonText = 'Insufficient WETH Balance';
-    buttonDisabled = true;
-  } else if (isBorrowingTooMuch) {
-    buttonText = 'LTV Too High!';
-    buttonDisabled = true;
-  } else if (numDeposit > 0) {
-    if (needsApproval) {
-      buttonText = '1. Approve WETH';
-      buttonDisabled = false;
-      buttonAction = () => {
-        setTxType('approve');
-        writeContract({ address: CONTRACT_ADDRESSES.WETH, abi: erc20Abi, functionName: 'approve', args: [CONTRACT_ADDRESSES.ROUTER, parsedDeposit] });
-      };
-    } else {
-      buttonText = '2. Deposit WETH';
-      buttonDisabled = false;
-      buttonAction = () => {
-        setTxType('deposit');
-        writeContract({ address: CONTRACT_ADDRESSES.ROUTER, abi: routerAbi, functionName: 'depositCollateral', args: [CONTRACT_ADDRESSES.GBP_STABLE, address!, parsedDeposit] });
+    if (numDeposit > 0) {
+      if (needsApproval) {
+        return {
+          text: '1. Approve WETH',
+          disabled: false,
+          action: () => {
+            setTxType('approve');
+            writeContract({ address: CONTRACT_ADDRESSES.WETH, abi: erc20Abi, functionName: 'approve', args: [CONTRACT_ADDRESSES.ROUTER, parsedDeposit] });
+          }
+        };
+      }
+      return {
+        text: '2. Deposit WETH',
+        disabled: false,
+        action: () => {
+          setTxType('deposit');
+          writeContract({ address: CONTRACT_ADDRESSES.ROUTER, abi: routerAbi, functionName: 'depositCollateral', args: [activeAsset.stableAddress, address!, parsedDeposit] });
+        }
       };
     }
-  } else if (numBorrow > 0) {
-    buttonText = '3. Borrow SPK';
-    buttonDisabled = currentLTV >= MAX_LTV;
-    buttonAction = () => {
-      setTxType('borrow');
-      writeContract({ address: CONTRACT_ADDRESSES.ROUTER, abi: routerAbi, functionName: 'borrowFiat', args: [CONTRACT_ADDRESSES.GBP_STABLE, parsedBorrow] });
-    };
-  }
 
-  // Pass everything back to the UI
+    return {
+      text: `3. Borrow ${activeAsset.symbol}`,
+      disabled: false, 
+      action: () => {
+        setTxType('borrow');
+        writeContract({ address: CONTRACT_ADDRESSES.ROUTER, abi: routerAbi, functionName: 'borrowFiat', args: [activeAsset.stableAddress, parsedBorrow] });
+      }
+    };
+  };
+
+  const { text: buttonText, disabled: buttonDisabled, action: buttonAction } = getButtonState();
+  
   return {
     depositAmount, borrowAmount, autoRebalance, setAutoRebalance, formattedBalance,
     totalCollateralValue, totalDebtValue, currentLTV, SAFE_LTV, MAX_LTV, currentHF, hfStatusText,
     maxBorrowableSPK, isExceedingBalance, isBorrowingTooMuch, buttonText, buttonAction,
-    buttonDisabled, isConfirmed, txType, handleMaxClick, handleDepositChange, handleMaxBorrowClick, handleBorrowChange
+    buttonDisabled, isConfirmed, txType, handleMaxClick, handleDepositChange, handleMaxBorrowClick, handleBorrowChange,
+    SUPPORTED_ASSETS, selectedAssetId, setSelectedAssetId, activeAsset, borrowAPR
   };
 }
