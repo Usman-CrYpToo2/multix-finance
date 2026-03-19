@@ -9,8 +9,9 @@ export default function EasyBorrowCard() {
     currentLTV, SAFE_LTV, MAX_LTV, currentHF, hfStatusText, maxBorrowableSPK,
     isExceedingBalance, buttonText, buttonAction, buttonDisabled,
     isConfirmed, txType, handleMaxClick, handleDepositChange, handleMaxBorrowClick, handleBorrowChange,
-  
-    SUPPORTED_ASSETS, selectedAssetId, setSelectedAssetId, activeAsset, borrowAPR
+
+    SUPPORTED_ASSETS, selectedAssetId, setSelectedAssetId, activeAsset, borrowAPR,
+    existingCollateral, existingDebt, existingCollateralValue, existingDebtValue
   } = useVaultData();
 
   const getProgressColor = (ltv: number) => {
@@ -28,85 +29,102 @@ export default function EasyBorrowCard() {
 
   return (
     <div className="max-w-6xl mx-auto font-sans grid grid-cols-1 lg:grid-cols-3 gap-6">
-      
+
       <div className="lg:col-span-2 p-6 md:p-8 bg-black/20 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/10 relative overflow-hidden group">
         <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
 
         <div className="flex flex-col md:flex-row gap-4 mb-8 relative z-10">
 
           {/* Deposit Box */}
-          <div className={`flex-1 border rounded-2xl p-5 bg-white/5 transition-colors ${isExceedingBalance ? 'border-pink-500/50 bg-pink-500/5' : 'border-white/10 hover:bg-white/10'}`}>
-            <div className="flex justify-between text-sm mb-3 text-zinc-400">
-              <span className={isExceedingBalance ? 'text-pink-400' : ''}>Deposit Collateral</span>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-zinc-500">
-                  Balance: {Number(formattedBalance).toFixed(4)} WETH
-                </span>
-                <button onClick={handleMaxClick} className="text-pink-400 hover:text-pink-300 font-medium transition-colors">Max</button>
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/10 shadow-inner">
-                <div className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center text-white text-xs shadow-[0_0_8px_rgba(99,102,241,0.5)]">Ξ</div>
-                <span className="font-semibold text-white">ETH</span>
-              </div>
-              <div className="text-right flex flex-col items-end">
-                <input
-                  type="text"
-                  value={depositAmount}
-                  onChange={handleDepositChange}
-                  placeholder="0.00"
-                  className={`w-32 text-right bg-transparent text-3xl font-bold focus:outline-none placeholder:text-zinc-600 transition-colors ${isExceedingBalance ? 'text-pink-500' : 'text-white'}`}
-                />
-                <div className="text-sm mt-1 flex flex-col items-end">
-                  <span className="text-zinc-500">${totalCollateralValue.toLocaleString()}</span>
-                  {isExceedingBalance && <span className="text-pink-500 font-medium text-xs mt-1 animate-pulse">Exceeds your balance</span>}
+          <div className={`flex-1 border rounded-2xl flex flex-col overflow-hidden transition-colors ${isExceedingBalance ? 'border-pink-500/50 bg-pink-500/5' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
+            <div className="p-5">
+              <div className="flex justify-between text-sm mb-3 text-zinc-400">
+                <span className={isExceedingBalance ? 'text-pink-400' : ''}>Deposit Collateral</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-zinc-500">
+                    Balance: {Number(formattedBalance).toFixed(4)} WETH
+                  </span>
+                  <button onClick={handleMaxClick} className="text-pink-400 hover:text-pink-300 font-medium transition-colors">Max</button>
                 </div>
               </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/10 shadow-inner">
+                  <div className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center text-white text-xs shadow-[0_0_8px_rgba(99,102,241,0.5)]">Ξ</div>
+                  <span className="font-semibold text-white">ETH</span>
+                </div>
+                <div className="text-right flex flex-col items-end">
+                  <input
+                    type="text"
+                    value={depositAmount}
+                    onChange={handleDepositChange}
+                    placeholder="0.00"
+                    className={`w-32 text-right bg-transparent text-3xl font-bold focus:outline-none placeholder:text-zinc-600 transition-colors ${isExceedingBalance ? 'text-pink-500' : 'text-white'}`}
+                  />
+                  <div className="text-sm mt-1 flex flex-col items-end">
+                    <span className="text-zinc-500">${totalCollateralValue.toLocaleString()}</span>
+                    {isExceedingBalance && <span className="text-pink-500 font-medium text-xs mt-1 animate-pulse">Exceeds your balance</span>}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+
+            <div className="bg-black/30 px-5 py-3 border-t border-white/5 flex items-center gap-2 text-xs text-zinc-400">
+              <div className="w-4 h-4 bg-indigo-500/20 rounded-full flex items-center justify-center">
+                <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
+              </div>
+              Already deposited ~${existingCollateralValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} WETH
             </div>
           </div>
 
           {/* Borrow Box */}
-          <div className="flex-1 border border-white/10 rounded-2xl p-5 bg-white/5 hover:bg-white/10 transition-colors">
-            <div className="flex justify-between text-sm mb-3 text-zinc-400">
-              <span>Borrow</span>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-zinc-500">
-                  Limit: {maxBorrowableSPK.toFixed(2)} {activeAsset.symbol}
-                </span>
-                <button onClick={handleMaxBorrowClick} className="text-[#E6007A] hover:text-pink-400 font-medium transition-colors">Max</button>
+          <div className="flex-1 border border-white/10 rounded-2xl flex flex-col overflow-hidden bg-white/5 hover:bg-white/10 transition-colors">
+            <div className="p-5">
+              <div className="flex justify-between text-sm mb-3 text-zinc-400">
+                <span>Borrow</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-zinc-500">
+                    Limit: {maxBorrowableSPK.toFixed(2)} {activeAsset.symbol}
+                  </span>
+                  <button onClick={handleMaxBorrowClick} className="text-[#E6007A] hover:text-pink-400 font-medium transition-colors">Max</button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 bg-black/40 pl-2 pr-3 py-1.5 rounded-full border border-white/10 shadow-inner hover:border-white/30 transition-colors">
+                  <div className="w-6 h-6 bg-[#E6007A] rounded-full flex items-center justify-center text-white text-xs shadow-[0_0_8px_rgba(230,0,122,0.5)]">$</div>
+                  <select
+                    value={selectedAssetId}
+                    onChange={(e) => setSelectedAssetId(e.target.value as keyof typeof SUPPORTED_ASSETS)}
+                    className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer appearance-none pr-4"
+                    style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23a1a1aa%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '16px' }}
+                  >
+                    {Object.entries(SUPPORTED_ASSETS).map(([key, asset]) => (
+                      <option key={key} value={key} className="bg-zinc-900 text-white">
+                        {asset.symbol} ({key})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="text-right flex flex-col items-end">
+                  <input
+                    type="text"
+                    value={borrowAmount}
+                    onChange={handleBorrowChange}
+                    placeholder="0.00"
+                    className="w-32 text-right bg-transparent text-3xl font-bold text-white focus:outline-none placeholder:text-zinc-600"
+                  />
+                  <div className="text-sm text-zinc-500 mt-1">${totalDebtValue.toLocaleString()}</div>
+                </div>
               </div>
             </div>
-            <div className="flex items-center justify-between">
-              
-              {/* Dynamic Dropdown Select */}
-              <div className="flex items-center gap-2 bg-black/40 pl-2 pr-3 py-1.5 rounded-full border border-white/10 shadow-inner hover:border-white/30 transition-colors">
-                <div className="w-6 h-6 bg-[#E6007A] rounded-full flex items-center justify-center text-white text-xs shadow-[0_0_8px_rgba(230,0,122,0.5)]">$</div>
-                <select 
-                  value={selectedAssetId}
-                  onChange={(e) => setSelectedAssetId(e.target.value as keyof typeof SUPPORTED_ASSETS)}
-                  className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer appearance-none pr-4"
 
-                  style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23a1a1aa%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '16px' }}
-                >
-                  {Object.entries(SUPPORTED_ASSETS).map(([key, asset]) => (
-                    <option key={key} value={key} className="bg-zinc-900 text-white">
-                      {asset.symbol} ({key})
-                    </option>
-                  ))}
-                </select>
+            
+            <div className="bg-black/30 px-5 py-3 border-t border-white/5 flex items-center gap-2 text-xs text-zinc-400">
+              <div className="w-4 h-4 bg-[#E6007A]/20 rounded-full flex items-center justify-center">
+                <div className="w-2 h-2 bg-[#E6007A] rounded-full"></div>
               </div>
-
-              <div className="text-right flex flex-col items-end">
-                <input
-                  type="text"
-                  value={borrowAmount}
-                  onChange={handleBorrowChange}
-                  placeholder="0.00"
-                  className="w-32 text-right bg-transparent text-3xl font-bold text-white focus:outline-none placeholder:text-zinc-600"
-                />
-                <div className="text-sm text-zinc-500 mt-1">${totalDebtValue.toLocaleString()}</div>
-              </div>
+              Already borrowed ~${existingDebtValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {activeAsset.symbol}
             </div>
           </div>
         </div>
@@ -212,7 +230,7 @@ export default function EasyBorrowCard() {
       </div>
 
       <div className="lg:col-span-1 flex flex-col gap-6">
-        
+
         {/* Dynamic Borrow Rate Box */}
         <div className="bg-[#18181b] border border-white/10 rounded-2xl p-6 shadow-xl flex flex-col justify-center h-[180px]">
           <div className="flex items-center gap-2 mb-4">
@@ -221,7 +239,7 @@ export default function EasyBorrowCard() {
             </div>
             <span className="text-zinc-300 font-medium text-sm tracking-wide">Borrow Rate</span>
           </div>
-          <div className="text-5xl font-bold text-[#facc15] drop-shadow-[0_0_15px_rgba(250,204,21,0.2)]">
+          <div className="text-5xl font-bold text-[#ffffff] drop-shadow-[0_0_15px_rgba(250,204,21,0.2)]">
             {borrowAPR.toFixed(2)}%
           </div>
           {/* <div className="text-xs text-zinc-500 mt-2">

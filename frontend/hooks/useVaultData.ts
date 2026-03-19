@@ -12,6 +12,14 @@ export const SUPPORTED_ASSETS = {
     stableAddress: CONTRACT_ADDRESSES.GBP_STABLE,
     price: 1.30, // We will make this dynamic from Oracle soon
   },
+
+  USD: {
+    id: 'USD',
+    symbol: 'USD',
+    poolAddress: CONTRACT_ADDRESSES.USD_Pool,
+    stableAddress: CONTRACT_ADDRESSES.USD_Stable,
+    price: 1.0,
+  }
 } as const;
 
 type AssetKey = keyof typeof SUPPORTED_ASSETS;
@@ -60,7 +68,7 @@ export function useVaultData() {
   });
 
   const { data: rawDebt, refetch: refetchDebt } = useReadContract({
-    address: CONTRACT_ADDRESSES.GBP_POOL, abi: cdpAbi, functionName: 'getUserDebt', args: address ? [address] : undefined, query: { enabled: !!address }
+    address: activeAsset.poolAddress, abi: cdpAbi, functionName: 'getUserDebt', args: address ? [address] : undefined, query: { enabled: !!address }
   });
 
   const { data: rawBorrowRate } = useReadContract({
@@ -94,8 +102,11 @@ export function useVaultData() {
   const SAFE_LTV = ltvConfigData ? Number(ltvConfigData[0]) / 100 : 70.0;
   const MAX_LTV = ltvConfigData ? Number(ltvConfigData[1]) / 100 : 82.5;
 
+  const existingCollateralValue = existingCollateral * COLLATERAL_PRICE;
+  const existingDebtValue = existingDebt * activeAsset.price;
+
   const currentHF = (existingDebt > 0 && existingCollateral > 0)
-    ? (((existingCollateral * SAFE_LTV) / 100 )* COLLATERAL_PRICE) / (existingDebt * activeAsset.price)
+    ? (((existingCollateral * MAX_LTV) / 100 )* COLLATERAL_PRICE) / (existingDebt * activeAsset.price)
     : 0;
 
   let hfStatusText = 'Danger';
@@ -183,6 +194,7 @@ export function useVaultData() {
     totalCollateralValue, totalDebtValue, currentLTV, SAFE_LTV, MAX_LTV, currentHF, hfStatusText,
     maxBorrowableSPK, isExceedingBalance, isBorrowingTooMuch, buttonText, buttonAction,
     buttonDisabled, isConfirmed, txType, handleMaxClick, handleDepositChange, handleMaxBorrowClick, handleBorrowChange,
-    SUPPORTED_ASSETS, selectedAssetId, setSelectedAssetId, activeAsset, borrowAPR
+    SUPPORTED_ASSETS, selectedAssetId, setSelectedAssetId, activeAsset, borrowAPR, existingCollateral, existingDebt,
+     existingCollateralValue, existingDebtValue
   };
 }
