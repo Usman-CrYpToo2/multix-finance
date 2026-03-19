@@ -137,7 +137,7 @@ export default function EasyBorrowCard() {
 
             <div className="absolute top-0 h-full border-l-2 border-pink-500 z-10 shadow-[0_0_5px_rgba(236,72,153,0.8)]" style={{ left: `${MAX_LTV}%` }}>
               <div className="absolute top-5 -left-6 text-[10px] font-bold text-pink-300 bg-pink-500/20 border border-pink-500/30 px-2 py-0.5 rounded whitespace-nowrap backdrop-blur-md">
-                Liquidation
+                Liquidation ({MAX_LTV}%)
               </div>
             </div>
           </div>

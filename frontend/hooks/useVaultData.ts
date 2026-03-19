@@ -35,8 +35,8 @@ export function useVaultData() {
 
   // --- UI State ---
   const [selectedAssetId, setSelectedAssetId] = useState<AssetKey>('GBP');
-  const [depositAmount, setDepositAmount] = useState('1');
-  const [borrowAmount, setBorrowAmount] = useState('100');
+  const [depositAmount, setDepositAmount] = useState('');
+  const [borrowAmount, setBorrowAmount] = useState('');
   const [autoRebalance, setAutoRebalance] = useState(false);
   const [txType, setTxType] = useState<'none' | 'approve' | 'deposit' | 'borrow'>('none');
 
@@ -95,7 +95,7 @@ export function useVaultData() {
   const MAX_LTV = ltvConfigData ? Number(ltvConfigData[1]) / 100 : 82.5;
 
   const currentHF = (existingDebt > 0 && existingCollateral > 0)
-    ? (existingCollateral * COLLATERAL_PRICE) / (existingDebt * activeAsset.price)
+    ? (((existingCollateral * SAFE_LTV) / 100 )* COLLATERAL_PRICE) / (existingDebt * activeAsset.price)
     : 0;
 
   let hfStatusText = 'Danger';
