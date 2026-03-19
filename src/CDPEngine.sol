@@ -469,4 +469,14 @@ contract CDPEngine is ICDPEngine, Ownable, Pausable {
         require(_liquidationPenaltyBp <= MAX_PENALTY_BP, "LiquidationPenaltyBpTooLarge");
         require(_safeLtvBp < _liquidationLtvBp, "SafeLtvBpTooLarge");
     }
+
+    function getUserDebt(address _account) external view returns (uint256) {
+        return _getDebt(_accounts[_account]);
+    }
+
+    function getUserCollateral(address _account) external view returns (uint256) {
+        return _accounts[_account].collateral;
+    }
+
+
 }
