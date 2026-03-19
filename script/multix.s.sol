@@ -51,24 +51,32 @@ contract MultixScript is Script {
             minBorrowAmount: 10000,
             minCollatAmount: 10000,
             safeLtvBp: 7000,
+            liquidationLtvBp: 7500,
+            liquidationPenaltyBp: 500,
+            borrowRatePerYearBp: 1000
+        });
+
+        (address gbpStable, address gbpPool) = factory.createMarket(tParamsGbp, bParams);
+
+         // 7. Create GBP Market
+        IMultiFiatFactory.TokenParams memory tParamsUSD =
+            IMultiFiatFactory.TokenParams({country: "USD", currency: "USD"});
+
+        IMultiFiatFactory.BorrowParams memory bParamsUSD = IMultiFiatFactory.BorrowParams({
+            minBorrowAmount: 10000,
+            minCollatAmount: 10000,
+            safeLtvBp: 7000,
             liquidationLtvBp: 8000,
             liquidationPenaltyBp: 500,
             borrowRatePerYearBp: 600
         });
 
-        (address gbpStable, address gbpPool) = factory.createMarket(tParamsGbp, bParams);
-
-        // 7b. Create USD Market
-        IMultiFiatFactory.TokenParams memory tParamsUsd =
-            IMultiFiatFactory.TokenParams({country: "US", currency: "USD"});
-
-        (address usdStable, address usdPool) = factory.createMarket(tParamsUsd, bParams);
+        (address USDStable, address USDPool) = factory.createMarket(tParamsUSD, bParamsUSD);
 
         // 8. Set Prices
-        oracle.updateEthPrice(1000 * 1e8); // $1000 per ETH
+        oracle.updateEthPrice(1000 * 1e8);
         oracle.updateFxRate(gbpPool, 13e7); // 1.3 USD per GBP
-        oracle.updateFxRate(usdPool, 1e8);  // 1.0 USD per USD (baseline)
-
+       oracle.updateFxRate(USDPool, 1e8);  // 1.0 USD per USD (baseline)
         vm.stopBroadcast();
 
         // Logs
@@ -77,10 +85,11 @@ contract MultixScript is Script {
         console2.log("Oracle:", address(oracle));
         console2.log("Factory:", address(factory));
         console2.log("Router:", address(router));
-        console2.log("--- Markets ---");
         console2.log("GBP Stable:", gbpStable);
         console2.log("GBP Pool:", gbpPool);
-        console2.log("USD Stable:", usdStable);
-        console2.log("USD Pool:", usdPool);
+        console2.log("USD Stable: ", USDStable);
+        console2.log("USD Pool:", USDPool);
+
+
     }
 }
