@@ -1,239 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useConnection, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { erc20Abi, parseEther, formatEther } from 'viem';
-import { CONTRACT_ADDRESSES } from '@/app/constants/addresses';
-
-
-const routerAbi = [
-  {
-    type: 'function',
-    name: 'depositCollateral',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'stableCoin', type: 'address' },
-      { name: 'receiver', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [],
-  },
-  {
-    type: 'function',
-    name: 'borrowFiat',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'stableCoin', type: 'address' },
-      { name: 'stablecoinAmount', type: 'uint256' },
-    ],
-    outputs: [],
-  }
-] as const;
-
-const cdpAbi = [
-  {
-    type: 'function',
-    name: 'ltvConfig',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [
-      { name: 'safeLtvBp', type: 'uint16' },
-      { name: 'liquidationLtvBp', type: 'uint16' },
-      { name: 'liquidationPenaltyBp', type: 'uint16' }
-    ],
-  },
-
-  {
-    type: 'function',
-    name: 'getUserDebt',
-    inputs: [{ name: '_account', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-
-  {
-    type: 'function',
-    name: 'getUserCollateral',
-    inputs: [{ name: '_account', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-  }
-] as const;
-
+import React from 'react';
+import { useVaultData } from '@/hooks/useVaultData'; // Ensure this path is correct!
 
 export default function EasyBorrowCard() {
-  const { address, isConnected } = useConnection();
+  // Grab all logic from our custom hook
+  const {
+    depositAmount, borrowAmount, formattedBalance, totalCollateralValue, totalDebtValue,
+    currentLTV, SAFE_LTV, MAX_LTV, currentHF, hfStatusText, maxBorrowableSPK,
+    isExceedingBalance, buttonText, buttonAction, buttonDisabled,
+    isConfirmed, txType, handleMaxClick, handleDepositChange, handleMaxBorrowClick, handleBorrowChange
+  } = useVaultData();
 
-  // Mock prices (We will replace these with real Oracle reads later!)
-  const COLLATERAL_PRICE = 1000;
-  const STABLECOIN_PRICE = 1.3;
-
-  const [depositAmount, setDepositAmount] = useState('1');
-  const [borrowAmount, setBorrowAmount] = useState('1000');
-  const [autoRebalance, setAutoRebalance] = useState(false);
-
-  // Track transaction 
-  const [txType, setTxType] = useState<'none' | 'approve' | 'deposit' | 'borrow'>('none');
-
-  
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: CONTRACT_ADDRESSES.WETH,
-    abi: erc20Abi,
-    functionName: 'allowance',
-    args: address ? [address, CONTRACT_ADDRESSES.ROUTER] : undefined,
-    query: { enabled: !!address }
-  });
-
-  // Read WETH Balance
-  const { data: wethBalance, refetch: refetchWethBalance } = useReadContract({
-    address: CONTRACT_ADDRESSES.WETH,
-    abi: erc20Abi,
-    functionName: 'balanceOf',
-    args: address ? [address] : undefined,
-    query: { enabled: !!address }
-  });
-
-  const formattedBalance = wethBalance ? formatEther(wethBalance) : '0';
-
-  // Fetch dynamic LTV parameters 
-  const { data: ltvConfigData } = useReadContract({
-    address: CONTRACT_ADDRESSES.GBP_POOL,
-    abi: cdpAbi,
-    functionName: 'ltvConfig',
-  });
-
-  // 3. Read Existing Vault Collateral
-  const { data: rawCollateral, refetch: refetchCollateral } = useReadContract({
-    address: CONTRACT_ADDRESSES.GBP_POOL,
-    abi: cdpAbi,
-    functionName: 'getUserCollateral',
-    args: address ? [address] : undefined,
-    query: { enabled: !!address }
-  });
-
-  // 4. Read Existing Vault Debt
-  const { data: rawDebt, refetch: refetchDebt } = useReadContract({
-    address: CONTRACT_ADDRESSES.GBP_POOL,
-    abi: cdpAbi,
-    functionName: 'getUserDebt',
-    args: address ? [address] : undefined,
-    query: { enabled: !!address }
-  });
-
-  const existingCollateral = rawCollateral ? Number(formatEther(rawCollateral)) : 0;
-  const existingDebt = rawDebt ? Number(formatEther(rawDebt)) : 0;
-
-  const { data: hash, writeContract, isPending } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
-
-  // --- Flow Management ---
-  // When a transaction successfully confirms, figure out what to do next
-  useEffect(() => {
-    if (isConfirmed) {
-      if (txType === 'approve') {
-        refetchAllowance(); // Refresh allowance so the UI knows we can deposit
-      } else if (txType === 'deposit') {
-        refetchWethBalance()
-        refetchCollateral()
-        setDepositAmount(''); // Clear deposit amount so the UI naturally shifts to Borrow step
-      } else if (txType === 'borrow') {
-        refetchDebt()
-        setBorrowAmount(''); // Clear borrow amount, we are done!
-      }
-      setTxType('none');
-    }
-  }, [isConfirmed, txType, refetchAllowance, refetchWethBalance, refetchCollateral, refetchDebt]);
-
-  // Math & Logic 
-  // --- Math & Logic ---
-  const numDeposit = Number(depositAmount) || 0;
-  const numBorrow = Number(borrowAmount) || 0;
-  
-  // 1. Calculate the TOTAL Projected Vault
-  const totalProjectedCollateral = existingCollateral + numDeposit;
-  const totalProjectedDebt = existingDebt + numBorrow;
-  
-  const totalCollateralValue = totalProjectedCollateral * COLLATERAL_PRICE;
-  const totalDebtValue = totalProjectedDebt * STABLECOIN_PRICE;
-  
-  // 2. Projected LTV (Existing Vault + New Inputs)
-  const currentLTV = totalCollateralValue > 0 ? (totalDebtValue / totalCollateralValue) * 100 : 0;
-
-  // 3. Dynamic LTV Rules
-  const SAFE_LTV = ltvConfigData ? Number(ltvConfigData[0]) / 100 : 70.0;
-  const MAX_LTV = ltvConfigData ? Number(ltvConfigData[1]) / 100 : 82.5;
-
-  // 4. Recalculate the REAL Max Borrow Limit 
-  // (Total Allowed Debt based on all collateral MINUS the debt they already have)
-  const maxTotalDebtUSD = totalCollateralValue * (SAFE_LTV / 100);
-  const maxTotalDebtSPK = maxTotalDebtUSD / STABLECOIN_PRICE;
-  const maxBorrowableSPK = Math.max(0, maxTotalDebtSPK - existingDebt);
-
-  const parsedDeposit = depositAmount ? parseEther(depositAmount) : BigInt(0);
-  const parsedBorrow = borrowAmount ? parseEther(borrowAmount) : BigInt(0);
-  const needsApproval = allowance !== undefined && parsedDeposit > allowance;
-  const isExceedingBalance = numDeposit > Number(formattedBalance);
-
-  const isBorrowingTooMuch = currentLTV >= MAX_LTV;
-
-  let buttonText = 'Enter Amounts';
-  let buttonAction = () => { };
-  let buttonDisabled = true;
-
-  if (!isConnected) {
-    buttonText = 'Connect Wallet';
-  } else if (isPending || isConfirming) {
-    buttonText = 'Confirming in Wallet...';
-  } else if (isExceedingBalance) {
-    buttonText = 'Insufficient WETH Balance';
-    buttonDisabled = true;
-  } else if (isBorrowingTooMuch) {
-    // NEW: Block the transaction if it instantly liquidates them!
-    buttonText = 'LTV Too High!';
-    buttonDisabled = true;
-  } else if (numDeposit > 0) {
-    // If they have a deposit amount, force the Approve/Deposit sequence first
-    if (needsApproval) {
-      buttonText = '1. Approve WETH';
-      buttonDisabled = false;
-      buttonAction = () => {
-        setTxType('approve');
-        writeContract({
-          address: CONTRACT_ADDRESSES.WETH,
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [CONTRACT_ADDRESSES.ROUTER, parsedDeposit],
-        });
-      };
-    } else {
-      buttonText = '2. Deposit WETH';
-      buttonDisabled = false;
-      buttonAction = () => {
-        setTxType('deposit');
-        writeContract({
-          address: CONTRACT_ADDRESSES.ROUTER,
-          abi: routerAbi,
-          functionName: 'depositCollateral',
-          args: [CONTRACT_ADDRESSES.GBP_STABLE, address!, parsedDeposit],
-        });
-      };
-    }
-  } else if (numBorrow > 0) {
-    // Once deposit is clear, allow borrowing
-    buttonText = '3. Borrow SPK';
-    buttonDisabled = currentLTV >= MAX_LTV; 
-    buttonAction = () => {
-      setTxType('borrow');
-      writeContract({
-        address: CONTRACT_ADDRESSES.ROUTER,
-        abi: routerAbi,
-        functionName: 'borrowFiat',
-        args: [CONTRACT_ADDRESSES.GBP_STABLE, parsedBorrow],
-      });
-    };
-  }
-
-  // --- UI Helpers ---
+  // --- UI Color Helpers 
   const getProgressColor = (ltv: number) => {
     if (ltv >= MAX_LTV) return 'bg-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.8)]';
     if (ltv >= SAFE_LTV) return 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]';
@@ -241,38 +20,13 @@ export default function EasyBorrowCard() {
     return 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]';
   };
 
-  const handleMaxClick = () => {
-    if (Number(formattedBalance) > 0) {
-      setDepositAmount(formattedBalance);
-    }
+  const getStatusClasses = (status: string) => {
+    if (status === 'Safe') return 'bg-emerald-500/20 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]';
+    if (status === 'Moderate') return 'bg-[#facc15]/20 text-[#facc15] shadow-[0_0_10px_rgba(250,204,21,0.2)]';
+    return 'bg-pink-500/20 text-pink-400 shadow-[0_0_10px_rgba(236,72,153,0.2)]';
   };
 
-
-  const handleDepositChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    // Only allow numbers and decimals
-    if (val === '' || /^\d*\.?\d*$/.test(val)) {
-      setDepositAmount(val);
-    }
-  };
-
-  const handleMaxBorrowClick = () => {
-    if (maxBorrowableSPK > 0) {
-      // Keep the max button auto-filling the valid amount (standard practice)
-      setBorrowAmount((Math.floor(maxBorrowableSPK * 100) / 100).toString());
-    }
-  };
-
-  const handleBorrowChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    
-    // Only allow numbers and empty strings
-    if (val === '' || /^\d*\.?\d*$/.test(val)) {
-      setBorrowAmount(val);
-    }
-  };
-  
-return (
+  return (
     <div className="max-w-3xl mx-auto p-6 md:p-8 bg-black/20 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/10 font-sans relative overflow-hidden group">
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
 
@@ -287,10 +41,7 @@ return (
               <span className="text-xs text-zinc-500">
                 Balance: {Number(formattedBalance).toFixed(4)} WETH
               </span>
-              <button
-                onClick={handleMaxClick}
-                className="text-pink-400 hover:text-pink-300 font-medium transition-colors"
-              >
+              <button onClick={handleMaxClick} className="text-pink-400 hover:text-pink-300 font-medium transition-colors">
                 Max
               </button>
             </div>
@@ -306,15 +57,12 @@ return (
                 value={depositAmount}
                 onChange={handleDepositChange}
                 placeholder="0.00"
-                className={`w-32 text-right bg-transparent text-3xl font-bold focus:outline-none placeholder:text-zinc-600 transition-colors ${isExceedingBalance ? 'text-pink-500' : 'text-white'
-                  }`}
+                className={`w-32 text-right bg-transparent text-3xl font-bold focus:outline-none placeholder:text-zinc-600 transition-colors ${isExceedingBalance ? 'text-pink-500' : 'text-white'}`}
               />
               <div className="text-sm mt-1 flex flex-col items-end">
                 <span className="text-zinc-500">${totalCollateralValue.toLocaleString()}</span>
                 {isExceedingBalance && (
-                  <span className="text-pink-500 font-medium text-xs mt-1 animate-pulse">
-                    Exceeds your balance
-                  </span>
+                  <span className="text-pink-500 font-medium text-xs mt-1 animate-pulse">Exceeds your balance</span>
                 )}
               </div>
             </div>
@@ -326,14 +74,10 @@ return (
           <div className="flex justify-between text-sm mb-3 text-zinc-400">
             <span>Borrow</span>
             <div className="flex items-center gap-3">
-              {/* Show their actual Borrow Limit here! */}
               <span className="text-xs text-zinc-500">
                 Limit: {maxBorrowableSPK.toFixed(2)} SPK
               </span>
-              <button
-                onClick={handleMaxBorrowClick}
-                className="text-[#E6007A] hover:text-pink-400 font-medium transition-colors"
-              >
+              <button onClick={handleMaxBorrowClick} className="text-[#E6007A] hover:text-pink-400 font-medium transition-colors">
                 Max
               </button>
             </div>
@@ -347,7 +91,7 @@ return (
               <input
                 type="text"
                 value={borrowAmount}
-                onChange={handleBorrowChange} // Uses the strict handler
+                onChange={handleBorrowChange}
                 placeholder="0.00"
                 className="w-32 text-right bg-transparent text-3xl font-bold text-white focus:outline-none placeholder:text-zinc-600"
               />
@@ -372,7 +116,6 @@ return (
           </div>
         </div>
 
-        {/* Progress Bar Container */}
         <div className="relative h-3 bg-zinc-800/80 rounded-full mb-8 overflow-visible">
           <div className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${getProgressColor(currentLTV)}`} style={{ width: `${Math.min(currentLTV, 100)}%` }}></div>
 
@@ -382,7 +125,6 @@ return (
             </div>
           </div>
 
-          {/* Liquidation Marker (Moved to Bottom) */}
           <div className="absolute top-0 h-full border-l-2 border-pink-500 z-10 shadow-[0_0_5px_rgba(236,72,153,0.8)]" style={{ left: `${MAX_LTV}%` }}>
             <div className="absolute top-5 -left-6 text-[10px] font-bold text-pink-300 bg-pink-500/20 border border-pink-500/30 px-2 py-0.5 rounded whitespace-nowrap backdrop-blur-md">
               Liquidation
@@ -397,20 +139,49 @@ return (
         )}
       </div>
 
-      {/* Auto-Rebalancing Toggle */}
-      <div className="border border-indigo-500/30 rounded-2xl p-6 bg-indigo-500/10 flex items-start justify-between relative z-10 backdrop-blur-sm transition-colors hover:bg-indigo-500/20 mb-8">
-        <div className="pr-6">
-          <h4 className="font-semibold text-indigo-300 mb-1 text-lg">Enable Auto-Rebalancing</h4>
-          <p className="text-sm text-indigo-200/60 leading-relaxed">
-            Protect your vault. If your LTV approaches the liquidation threshold, the protocol will automatically swap a small portion of your collateral to repay debt.
-          </p>
+      {/* 💚 Health Factor Card 💚 */}
+      <div className="border border-white/10 rounded-2xl p-8 bg-black/40 shadow-inner mb-8 relative overflow-hidden z-10 font-sans">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-white text-xl">Health factor</h3>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-zinc-500 hover:text-white transition-colors cursor-help">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.835a.05.05 0 0 0 .041.063h.041a.75.75 0 0 1 .632.964l-1.068 3.56a1.5 1.5 0 0 1-1.071 1.072zM12.75 9a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+          </div>
+          <div className="text-right">
+            <div className={`inline-block font-bold text-xs px-3 py-1 rounded-full ${getStatusClasses(hfStatusText)}`}>
+              {hfStatusText}
+            </div>
+          </div>
         </div>
-        <button
-          onClick={() => setAutoRebalance(!autoRebalance)}
-          className={`relative mt-1 inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-300 ease-in-out focus:outline-none ${autoRebalance ? 'bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.6)]' : 'bg-zinc-700'}`}
-        >
-          <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-300 ease-in-out ${autoRebalance ? 'translate-x-5' : 'translate-x-0'}`} />
-        </button>
+
+        <div className="text-center text-7xl font-bold text-white mb-6">
+          {Number(currentHF || 0).toFixed(2)}
+        </div>
+
+        <div className="relative mb-8 pt-6 pb-4 px-2">
+          <div className="h-4 w-full bg-zinc-800/80 rounded-full flex gap-1 border border-white/5 shadow-inner">
+            <div className="flex-1 bg-pink-500/20 rounded-l-full relative group">
+              <span className="absolute -top-6 left-2 text-[10px] text-pink-400 font-medium group-hover:opacity-100 opacity-60">Alert</span>
+            </div>
+            <div className="flex-1 bg-[#facc15]/20 relative group">
+              <span className="absolute -top-6 left-2 text-[10px] text-[#facc15] font-medium group-hover:opacity-100 opacity-60">Moderate</span>
+            </div>
+            <div className="flex-1 bg-emerald-500/20 rounded-r-full relative group">
+              <span className="absolute -top-6 left-2 text-[10px] text-emerald-400 font-medium group-hover:opacity-100 opacity-60">Safe</span>
+            </div>
+          </div>
+
+          <div className="absolute top-[2px] h-full border-l-[3px] border-white/80 z-20 shadow-[0_0_8px_white]" style={{ left: `${Math.min(((currentHF - 1) / 4) * 100, 100)}%` }}>
+            <div className="absolute -top-3 -left-[6.5px] w-0 h-0 border-l-[6.5px] border-r-[6.5px] border-t-[8px] border-l-transparent border-r-transparent border-t-white/80"></div>
+          </div>
+
+          <div className="absolute bottom-[-10px] w-full flex justify-between text-[11px] font-medium text-zinc-500 px-1">
+            <span>1.0</span><span>1.5</span><span>2.0</span><span>2.5</span><span>3.0</span><span>3.5</span><span>4.0</span><span>4.5</span><span>5+</span>
+          </div>
+        </div>
+
+        <div className="mt-8 text-center text-[9px] text-zinc-700">Live Vault Position Data from CDPEngine.sol</div>
       </div>
 
       {/* 🚀 THE ACTION BUTTON 🚀 */}
