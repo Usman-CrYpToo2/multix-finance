@@ -1,15 +1,108 @@
-// pages/markets/page.tsx (or wherever your MarketsPage is)
 'use client';
 
-import { useState } from 'react';
-import { Asset } from '@/types/market'; // Adjust path if necessary
-import { WithdrawModal } from '@/components/modals/WithdrawModal'; // Adjust path
-import { RepayModal } from '@/components/modals/RepayModal'; // Adjust path
+import { useState, useMemo } from 'react';
+import { useReadContracts } from 'wagmi';
+import { formatEther } from 'viem';
+import { CONTRACT_ADDRESSES } from '@/constants/addresses';
+import { Asset } from '@/types/market';
+import { WithdrawModal } from '@/components/modals/WithdrawModal';
+import { RepayModal } from '@/components/modals/RepayModal';
 
-const MarketsPage = () => {
+// --- Configuration & ABIs ---
+const COLLATERAL_PRICE = 1000; // Still waiting for that Oracle function!
+
+const cdpAbi = [
+  { type: 'function', name: 'ltvConfig', stateMutability: 'view', inputs: [], outputs: [{ name: 'safeLtvBp', type: 'uint16' }, { name: 'liquidationLtvBp', type: 'uint16' }, { name: 'liquidationPenaltyBp', type: 'uint16' }] },
+  { type: 'function', name: 'getTotalDebt', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { type: 'function', name: 'getTotalCollateral', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] }
+] as const;
+
+// The base config for the assets we want to load
+const ASSET_CONFIG = [
+  {
+    id: 'gbp',
+    name: 'British Pound Peg',
+    symbol: 'GBP', // Change to GBP if you prefer
+    color: 'bg-[#E6007A]',
+    poolAddress: CONTRACT_ADDRESSES.GBP_POOL,
+    price: 1.30,
+    isCrossChain: true,
+  },
+  {
+    id: 'usd',
+    name: 'US Dollar Peg',
+    symbol: 'USD',
+    color: 'bg-blue-500',
+    poolAddress: CONTRACT_ADDRESSES.USD_Pool,
+    price: 1.0,
+    isCrossChain: false,
+  }
+];
+
+export default function MarketsPage() {
   // Modal State
   const [activeModal, setActiveModal] = useState<'withdraw' | 'repay' | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+
+  // --- Blockchain Reads (Multicall) ---
+  // We build an array of 3 contract calls for EVERY asset in our config
+  const contracts = ASSET_CONFIG.flatMap(asset => [
+    { address: asset.poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'getTotalCollateral' },
+    { address: asset.poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'getTotalDebt' },
+    { address: asset.poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'ltvConfig' }
+  ]);
+
+  const { data: contractData } = useReadContracts({ 
+    contracts,
+    // Refetch every block to keep the UI perfectly live
+    query: { refetchInterval: 3000 } 
+  });
+
+  // --- Process Data ---
+  const { liveAssets, totalVlUsd, totalMintedUsd } = useMemo(() => {
+    let tvlSum = 0;
+    let mintedSum = 0;
+    const mappedAssets: Asset[] = [];
+
+    
+    for (let index = 0; index < ASSET_CONFIG.length; index++) {
+      const config = ASSET_CONFIG[index];
+      const baseIndex = index * 3;
+      
+      const rawCollateral = contractData?.[baseIndex]?.result as bigint | undefined;
+      const rawDebt = contractData?.[baseIndex + 1]?.result as bigint | undefined;
+      const rawLtv = contractData?.[baseIndex + 2]?.result as readonly [number, number, number] | undefined;
+
+      const numCollateral = rawCollateral ? Number(formatEther(rawCollateral)) : 0;
+      const numDebt = rawDebt ? Number(formatEther(rawDebt)) : 0;
+
+      const collateralUsd = numCollateral * COLLATERAL_PRICE;
+      const debtUsd = numDebt * config.price;
+
+      // These mutations are now 100% safe because they are not inside a callback
+      tvlSum += collateralUsd;
+      mintedSum += debtUsd;
+
+      mappedAssets.push({
+        id: config.id,
+        name: config.name,
+        symbol: config.symbol,
+        color: config.color,
+        totalDeposited: numCollateral.toLocaleString(undefined, { maximumFractionDigits: 4 }),
+        depositedUsd: `$${collateralUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        totalMinted: numDebt.toLocaleString(undefined, { maximumFractionDigits: 2 }),
+        mintedUsd: `$${debtUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        safeLtv: rawLtv ? `${(Number(rawLtv[0]) / 100).toFixed(2)}%` : '0.00%',
+        maxLtv: rawLtv ? `${(Number(rawLtv[1]) / 100).toFixed(2)}%` : '0.00%',
+        isCrossChain: config.isCrossChain,
+        walletBalance: '0 WETH',
+        supplyApy: '0.00%',
+        debtAmount: '0.00',
+      });
+    }
+
+    return { liveAssets: mappedAssets, totalVlUsd: tvlSum, totalMintedUsd: mintedSum };
+  }, [contractData]);
 
   const openModal = (type: 'withdraw' | 'repay', asset: Asset) => {
     setSelectedAsset(asset);
@@ -18,62 +111,8 @@ const MarketsPage = () => {
 
   const closeModal = () => {
     setActiveModal(null);
-    setTimeout(() => setSelectedAsset(null), 200);
+    setTimeout(() => setSelectedAsset(null), 200); 
   };
-
-  // ... [Keep your marketAssets mock data and the entire return() JSX exactly the same] ...
-
-  // Mock data for the markets table
-  const marketAssets: Asset[] = [
-    {
-      id: 'dot',
-      name: 'Polkadot',
-      symbol: 'DOT',
-      color: 'bg-[#E6007A]',
-      totalDeposited: '1.25M',
-      depositedUsd: '$12.5M',
-      totalMinted: '5.2M',
-      mintedUsd: '$5.2M',
-      safeLtv: '70.00%',
-      maxLtv: '80.00%',
-      isCrossChain: true,
-      walletBalance: '1,500 DOT',
-      supplyApy: '1.34%',
-      debtAmount: '450.00',
-    },
-    {
-      id: 'eth',
-      name: 'Ethereum',
-      symbol: 'ETH',
-      color: 'bg-indigo-500',
-      totalDeposited: '4,250',
-      depositedUsd: '$12.7M',
-      totalMinted: '6.1M',
-      mintedUsd: '$6.1M',
-      safeLtv: '75.00%',
-      maxLtv: '82.50%',
-      isCrossChain: true,
-      walletBalance: '12.5 ETH',
-      supplyApy: '2.10%',
-      debtAmount: '1,200.00',
-    },
-    {
-      id: 'usdc',
-      name: 'USD Coin',
-      symbol: 'USDC',
-      color: 'bg-blue-500',
-      totalDeposited: '8.5M',
-      depositedUsd: '$8.5M',
-      totalMinted: '7.6M',
-      mintedUsd: '$7.6M',
-      safeLtv: '90.00%',
-      maxLtv: '95.00%',
-      isCrossChain: false,
-      walletBalance: '15,000 USDC',
-      supplyApy: '4.50%',
-      debtAmount: '10,000.00',
-    }
-  ];
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6 font-sans">
@@ -86,28 +125,32 @@ const MarketsPage = () => {
 
       {/* Summary Cards Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        {/* Dark Hero Card */}
+        {/* Dynamic TVL Card */}
         <div className="bg-black/40 backdrop-blur-md rounded-[2rem] p-8 relative overflow-hidden shadow-2xl border border-white/10 group">
           <div className="absolute inset-0 bg-gradient-to-br from-pink-500/5 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
           <div className="relative z-10 text-center">
-            <p className="text-zinc-400 text-sm font-medium mb-2 tracking-wide">Total Value Locked (Cross-Chain)</p>
-            <h2 className="text-4xl text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-indigo-400 font-bold">$33.7M</h2>
+            <p className="text-zinc-400 text-sm font-medium mb-2 tracking-wide">Total Value Locked (TVL)</p>
+            <h2 className="text-4xl text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-indigo-400 font-bold">
+              ${totalVlUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </h2>
           </div>
-
           <div className="absolute -right-12 -bottom-12 w-48 h-48 border border-white/5 rounded-full opacity-50"></div>
           <div className="absolute -right-4 -bottom-4 w-48 h-48 border border-white/10 rounded-full opacity-50"></div>
         </div>
 
-        {/* Light Stat Cards (Converted to Dark) */}
+        {/* Dynamic Minted Card */}
         <div className="bg-white/5 backdrop-blur-md rounded-[2rem] p-8 border border-white/10 shadow-lg flex flex-col justify-center items-center hover:bg-white/10 transition-colors">
           <p className="text-zinc-400 text-sm font-medium mb-2">Total StableCoin Minted</p>
-          <h2 className="text-4xl text-white font-bold">$18.9M</h2>
+          <h2 className="text-4xl text-white font-bold">
+             ${totalMintedUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </h2>
         </div>
 
+        {/* Static Auto-Rebalance Card */}
         <div className="bg-white/5 backdrop-blur-md rounded-[2rem] p-8 border border-white/10 shadow-lg flex flex-col justify-center items-center hover:bg-white/10 transition-colors">
-          <p className="text-zinc-400 text-sm font-medium mb-2">Vaults Protected (Auto-Rebalance)</p>
+          <p className="text-zinc-400 text-sm font-medium mb-2">Total StableCoins</p>
           <div className="flex items-baseline gap-2">
-            <h2 className="text-4xl text-white font-bold">1,204</h2>
+            <h2 className="text-4xl text-white font-bold">{ASSET_CONFIG.length}</h2>
             <span className="text-emerald-400 text-sm font-semibold drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]">Active</span>
           </div>
         </div>
@@ -127,9 +170,8 @@ const MarketsPage = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {marketAssets.map((asset) => (
+              {liveAssets.map((asset) => (
                 <tr key={asset.id} className="hover:bg-white/5 transition-colors group">
-                  {/* Asset Column */}
                   <td className="px-6 py-5">
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 ${asset.color} rounded-full flex items-center justify-center text-white text-xs font-bold shadow-[0_0_10px_rgba(255,255,255,0.2)]`}>
@@ -149,19 +191,16 @@ const MarketsPage = () => {
                     </div>
                   </td>
 
-                  {/* Deposited Column */}
                   <td className="px-6 py-5">
-                    <div className="font-medium text-white">{asset.totalDeposited}</div>
+                    <div className="font-medium text-white">{asset.totalDeposited} WETH</div>
                     <div className="text-zinc-400 text-xs">{asset.depositedUsd}</div>
                   </td>
 
-                  {/* Minted Column */}
                   <td className="px-6 py-5">
-                    <div className="font-medium text-white">{asset.totalMinted}</div>
+                    <div className="font-medium text-white">{asset.totalMinted} {asset.symbol}</div>
                     <div className="text-zinc-400 text-xs">{asset.mintedUsd}</div>
                   </td>
 
-                  {/* Protocol Parameters Column */}
                   <td className="px-6 py-5">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center justify-between max-w-[140px]">
@@ -175,22 +214,21 @@ const MarketsPage = () => {
                     </div>
                   </td>
 
-                  {/* NEW 🚀: Action Buttons Column */}
                   <td className="px-6 py-5">
-                    <div className="flex justify-end items-center gap-2">
-                      <button
-                        onClick={() => openModal('withdraw', asset)}
-                        className="bg-white/10 hover:bg-white/20 text-white border border-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                      >
-                        Withdraw
-                      </button>
-                      <button
-                        onClick={() => openModal('repay', asset)}
-                        className="bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 border border-pink-500/20 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                      >
-                        Repay
-                      </button>
-                    </div>
+                      <div className="flex justify-end items-center gap-2">
+                          <button
+                              onClick={() => openModal('withdraw', asset)}
+                              className="bg-white/10 hover:bg-white/20 text-white border border-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                          >
+                              Withdraw
+                          </button>
+                          <button
+                              onClick={() => openModal('repay', asset)}
+                              className="bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 border border-pink-500/20 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                          >
+                              Repay
+                          </button>
+                      </div>
                   </td>
                 </tr>
               ))}
@@ -199,16 +237,13 @@ const MarketsPage = () => {
         </div>
       </div>
 
-      {/* Render Active Modals */}
       {activeModal === 'withdraw' && selectedAsset && (
         <WithdrawModal asset={selectedAsset} onClose={closeModal} />
       )}
-
+      
       {activeModal === 'repay' && selectedAsset && (
         <RepayModal asset={selectedAsset} onClose={closeModal} />
       )}
     </div>
   );
-};
-
-export default MarketsPage;
+}

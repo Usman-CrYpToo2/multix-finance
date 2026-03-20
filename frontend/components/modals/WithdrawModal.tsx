@@ -1,4 +1,3 @@
-// components/modals/WithdrawModal.tsx
 'use client';
 
 import { useState } from 'react';
@@ -65,10 +64,16 @@ export const WithdrawModal = ({ asset, onClose }: WithdrawModalProps) => {
           <div>
             <h4 className="text-sm text-zinc-400 mb-2">Transaction overview</h4>
             <div className="bg-white/5 border border-white/5 rounded-xl p-4 flex flex-col gap-3">
+              
+              {/*CHANGED: Health Factor Block */}
               <div className="flex justify-between items-center">
-                <span className="text-zinc-400 text-sm">Supply APY:</span>
-                <span className="text-white font-medium">{asset.supplyApy}</span>
+                <span className="text-zinc-400 text-sm">Health factor:</span>
+                <div className="flex items-center gap-2">
+                  <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold px-2 py-0.5 rounded">Healthy</span>
+                  <span className="text-white font-medium">184.31</span>
+                </div>
               </div>
+
               <div className="h-px bg-white/5 w-full"></div>
               <div className="flex justify-between items-start">
                 <span className="text-zinc-400 text-sm">Supplied:</span>
