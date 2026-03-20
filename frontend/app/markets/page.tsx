@@ -1,15 +1,35 @@
+// pages/markets/page.tsx (or wherever your MarketsPage is)
 'use client';
 
-import Link from 'next/link';
+import { useState } from 'react';
+import { Asset } from '@/types/market'; // Adjust path if necessary
+import { WithdrawModal } from '@/components/modals/WithdrawModal'; // Adjust path
+import { RepayModal } from '@/components/modals/RepayModal'; // Adjust path
 
 const MarketsPage = () => {
+  // Modal State
+  const [activeModal, setActiveModal] = useState<'withdraw' | 'repay' | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+
+  const openModal = (type: 'withdraw' | 'repay', asset: Asset) => {
+    setSelectedAsset(asset);
+    setActiveModal(type);
+  };
+
+  const closeModal = () => {
+    setActiveModal(null);
+    setTimeout(() => setSelectedAsset(null), 200);
+  };
+
+  // ... [Keep your marketAssets mock data and the entire return() JSX exactly the same] ...
+
   // Mock data for the markets table
-  const marketAssets = [
+  const marketAssets: Asset[] = [
     {
       id: 'dot',
       name: 'Polkadot',
       symbol: 'DOT',
-      color: 'bg-[#E6007A]', // Polkadot true brand color
+      color: 'bg-[#E6007A]',
       totalDeposited: '1.25M',
       depositedUsd: '$12.5M',
       totalMinted: '5.2M',
@@ -17,6 +37,9 @@ const MarketsPage = () => {
       safeLtv: '70.00%',
       maxLtv: '80.00%',
       isCrossChain: true,
+      walletBalance: '1,500 DOT',
+      supplyApy: '1.34%',
+      debtAmount: '450.00',
     },
     {
       id: 'eth',
@@ -30,6 +53,9 @@ const MarketsPage = () => {
       safeLtv: '75.00%',
       maxLtv: '82.50%',
       isCrossChain: true,
+      walletBalance: '12.5 ETH',
+      supplyApy: '2.10%',
+      debtAmount: '1,200.00',
     },
     {
       id: 'usdc',
@@ -43,6 +69,9 @@ const MarketsPage = () => {
       safeLtv: '90.00%',
       maxLtv: '95.00%',
       isCrossChain: false,
+      walletBalance: '15,000 USDC',
+      supplyApy: '4.50%',
+      debtAmount: '10,000.00',
     }
   ];
 
@@ -64,7 +93,7 @@ const MarketsPage = () => {
             <p className="text-zinc-400 text-sm font-medium mb-2 tracking-wide">Total Value Locked (Cross-Chain)</p>
             <h2 className="text-4xl text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-indigo-400 font-bold">$33.7M</h2>
           </div>
-          
+
           <div className="absolute -right-12 -bottom-12 w-48 h-48 border border-white/5 rounded-full opacity-50"></div>
           <div className="absolute -right-4 -bottom-4 w-48 h-48 border border-white/10 rounded-full opacity-50"></div>
         </div>
@@ -94,7 +123,7 @@ const MarketsPage = () => {
                 <th className="px-6 py-4">Total Deposited</th>
                 <th className="px-6 py-4">Total Minted (Debt)</th>
                 <th className="px-6 py-4">Partial Liq. Parameters</th>
-                <th className="px-6 py-4 text-right rounded-tr-3xl">Action</th>
+                <th className="px-6 py-4 text-right rounded-tr-3xl">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
@@ -132,7 +161,7 @@ const MarketsPage = () => {
                     <div className="text-zinc-400 text-xs">{asset.mintedUsd}</div>
                   </td>
 
-                  {/* Protocol Parameters Column (Your Secret Sauce) */}
+                  {/* Protocol Parameters Column */}
                   <td className="px-6 py-5">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center justify-between max-w-[140px]">
@@ -146,14 +175,22 @@ const MarketsPage = () => {
                     </div>
                   </td>
 
-                  {/* Action Column */}
-                  <td className="px-6 py-5 text-right">
-                      <Link
-                          href="/borrow"
-                          className="inline-block bg-white/10 hover:bg-pink-600/90 text-white border border-white/10 hover:border-pink-500/50 px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:shadow-[0_0_15px_rgba(230,0,122,0.4)]"
+                  {/* NEW 🚀: Action Buttons Column */}
+                  <td className="px-6 py-5">
+                    <div className="flex justify-end items-center gap-2">
+                      <button
+                        onClick={() => openModal('withdraw', asset)}
+                        className="bg-white/10 hover:bg-white/20 text-white border border-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                       >
-                          Manage Vault
-                      </Link>
+                        Withdraw
+                      </button>
+                      <button
+                        onClick={() => openModal('repay', asset)}
+                        className="bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 border border-pink-500/20 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Repay
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -161,6 +198,15 @@ const MarketsPage = () => {
           </table>
         </div>
       </div>
+
+      {/* Render Active Modals */}
+      {activeModal === 'withdraw' && selectedAsset && (
+        <WithdrawModal asset={selectedAsset} onClose={closeModal} />
+      )}
+
+      {activeModal === 'repay' && selectedAsset && (
+        <RepayModal asset={selectedAsset} onClose={closeModal} />
+      )}
     </div>
   );
 };
