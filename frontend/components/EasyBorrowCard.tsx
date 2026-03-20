@@ -69,11 +69,16 @@ export default function EasyBorrowCard() {
             </div>
 
 
-            <div className="bg-black/30 px-5 py-3 border-t border-white/5 flex items-center gap-2 text-xs text-zinc-400">
-              <div className="w-4 h-4 bg-indigo-500/20 rounded-full flex items-center justify-center">
-                <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
+            <div className="bg-black/30 px-5 py-3 border-t border-white/5 flex items-center justify-between text-xs text-zinc-400">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-indigo-500/20 rounded-full flex items-center justify-center">
+                  <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
+                </div>
+                <span>Deposited <span className="text-white font-medium ml-1">{existingCollateral.toLocaleString(undefined, { maximumFractionDigits: 4 })} WETH</span></span>
               </div>
-              Already deposited ~${existingCollateralValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} WETH
+              <span className="text-zinc-500">
+                ${existingCollateralValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
             </div>
           </div>
 
@@ -119,12 +124,17 @@ export default function EasyBorrowCard() {
               </div>
             </div>
 
-            
-            <div className="bg-black/30 px-5 py-3 border-t border-white/5 flex items-center gap-2 text-xs text-zinc-400">
-              <div className="w-4 h-4 bg-[#E6007A]/20 rounded-full flex items-center justify-center">
-                <div className="w-2 h-2 bg-[#E6007A] rounded-full"></div>
+
+            <div className="bg-black/30 px-5 py-3 border-t border-white/5 flex items-center justify-between text-xs text-zinc-400">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-[#E6007A]/20 rounded-full flex items-center justify-center">
+                  <div className="w-2 h-2 bg-[#E6007A] rounded-full"></div>
+                </div>
+                <span>Borrowed <span className="text-white font-medium ml-1">{existingDebt.toLocaleString(undefined, { maximumFractionDigits: 2 })} {activeAsset.symbol}</span></span>
               </div>
-              Already borrowed ~${existingDebtValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {activeAsset.symbol}
+              <span className="text-zinc-500">
+                ${existingDebtValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
             </div>
           </div>
         </div>
