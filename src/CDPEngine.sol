@@ -489,4 +489,51 @@ contract CDPEngine is ICDPEngine, Ownable, Pausable {
         return aggregateState.totalCollateral;
     }
 
+    /// @notice Calculates the maximum exact amount of collateral a user can safely withdraw.
+    /// @dev Accounts for the minCollatAmount constraint to prevent UX reverts.
+    /// @param _user The address of the CDP owner.
+    /// @return safeAmount The maximum withdrawable amount that won't trigger a dust revert.
+    function getSafeWithdrawableCollateral(address _user) external view returns (uint256 safeAmount) {
+        Account memory account = _accounts[_user];
+        uint256 currentCollateral = account.collateral;
+
+        if (currentCollateral == 0) return 0;
+
+        uint256 debt = _getDebt(account);
+
+        // 1. If the user has no debt, they can always withdraw 100% of their collateral.
+        // Your _withdraw logic explicitly allows wiping remainingCollateral to 0 if debt == 0.
+        if (debt == 0) {
+            return currentCollateral;
+        }
+
+        // 2. Calculate the theoretical maximum allowed by the LTV math.
+        uint256 theoreticalMax = _getCollateralAvailableToWithdraw(account);
+
+        // Safety cap (should naturally be true, but protects against math edge cases)
+        if (theoreticalMax > currentCollateral) {
+            theoreticalMax = currentCollateral;
+        }
+
+        // 3. Simulate the remaining collateral after the theoretical max withdrawal.
+        uint256 remainingCollateral = currentCollateral - theoreticalMax;
+
+        // 4. Check for the "Dust Trap"
+        // If taking the max leaves an invalid dust position, we must reduce the withdrawal 
+        // amount so they leave exactly `minCollatAmount` behind.
+        if (remainingCollateral > 0 && remainingCollateral < collateralConfig.minCollatAmount) {
+            // Prevent underflow if the user somehow has less than minCollatAmount to begin with
+            if (currentCollateral > collateralConfig.minCollatAmount) {
+                safeAmount = currentCollateral - collateralConfig.minCollatAmount;
+            } else {
+                safeAmount = 0; // The position is too small to safely extract anything while holding debt.
+            }
+        } else {
+            // Taking the theoretical max perfectly clears to 0, or leaves a healthy amount.
+            safeAmount = theoreticalMax;
+        }
+
+        return safeAmount;
+    }
+
 }
