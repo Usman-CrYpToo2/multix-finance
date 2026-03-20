@@ -105,9 +105,14 @@ export function useVaultData() {
   const existingCollateralValue = existingCollateral * COLLATERAL_PRICE;
   const existingDebtValue = existingDebt * activeAsset.price;
 
-  const currentHF = (existingDebt > 0 && existingCollateral > 0)
-    ? (((existingCollateral * MAX_LTV) / 100 )* COLLATERAL_PRICE) / (existingDebt * activeAsset.price)
-    : 0;
+  let currentHF = 0;
+
+  if (existingDebt > 0 && existingCollateral > 0) {
+    const rawHF = (((existingCollateral * MAX_LTV) / 100) * COLLATERAL_PRICE) / 
+                  (existingDebt * activeAsset.price);
+  
+    currentHF = Math.max(0, Math.min(5, rawHF));
+  }
 
   let hfStatusText = 'Danger';
   if (currentHF >= 2.5) hfStatusText = 'Safe';
