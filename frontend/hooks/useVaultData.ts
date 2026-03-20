@@ -81,7 +81,7 @@ export function useVaultData() {
 
   // --- Math & Logic ---
   const formattedBalance = wethBalance ? formatEther(wethBalance) : '0';
-  const existingCollateral = rawCollateral ? Number(formatEther(rawCollateral)) : 0;
+  const existingCollateral = rawCollateral ? Number(formatEther(rawCollateral - BigInt(10000))) : 0;
   const existingDebt = rawDebt ? Number(formatEther(rawDebt)) : 0;
 
   // Calculate Borrow Rate (APR)
@@ -115,7 +115,7 @@ export function useVaultData() {
 
   const maxTotalDebtUSD = totalCollateralValue * (SAFE_LTV / 100);
   const maxTotalDebtSPK = maxTotalDebtUSD / activeAsset.price;
-  const maxBorrowableSPK = Math.max(0, maxTotalDebtSPK - existingDebt - 10000);
+  const maxBorrowableSPK = Math.max(0, maxTotalDebtSPK - existingDebt );
 
   const parsedDeposit = depositAmount ? parseEther(depositAmount) : BigInt(0);
   const parsedBorrow = borrowAmount ? parseEther(borrowAmount) : BigInt(0);
