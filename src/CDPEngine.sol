@@ -478,5 +478,15 @@ contract CDPEngine is ICDPEngine, Ownable, Pausable {
         return _accounts[_account].collateral;
     }
 
+    function getTotalDebt() external view returns(uint256) {
+        uint256 timeElapsed = block.timestamp - lastAccrual;
+        uint256 totalDebt = aggregateState.totalDebt;
+        uint256 interest = (borrowRatePerSecond * timeElapsed).mulDiv(totalDebt, 10 ** 18);
+        return totalDebt + interest;
+    }
+
+    function getTotalCollateral() external view returns(uint256) {
+        return aggregateState.totalCollateral;
+    }
 
 }
