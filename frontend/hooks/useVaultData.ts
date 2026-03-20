@@ -115,7 +115,7 @@ export function useVaultData() {
 
   const maxTotalDebtUSD = totalCollateralValue * (SAFE_LTV / 100);
   const maxTotalDebtSPK = maxTotalDebtUSD / activeAsset.price;
-  const maxBorrowableSPK = Math.max(0, maxTotalDebtSPK - existingDebt);
+  const maxBorrowableSPK = Math.max(0, maxTotalDebtSPK - existingDebt - 10000);
 
   const parsedDeposit = depositAmount ? parseEther(depositAmount) : BigInt(0);
   const parsedBorrow = borrowAmount ? parseEther(borrowAmount) : BigInt(0);
@@ -127,7 +127,7 @@ export function useVaultData() {
   useEffect(() => {
     if (isConfirmed) {
       if (txType === 'approve') refetchAllowance();
-      else if (txType === 'deposit') { refetchWethBalance(); refetchCollateral(); setDepositAmount(''); }
+      else if (txType === 'deposit') { refetchWethBalance(); refetchCollateral(); setDepositAmount(''); refetchAllowance(); }
       else if (txType === 'borrow') { refetchDebt(); setBorrowAmount(''); }
       setTxType('none');
     }
