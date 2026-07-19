@@ -1,0 +1,20 @@
+{
+  "name": "multix-hyperlane",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hyperlane warp-route deployment scaffolding for MultiX Finance stablecoins (Somnia testnet <-> Ethereum Sepolia).",
+  "scripts": {
+    "registry:init": "hyperlane registry init",
+    "core:init": "hyperlane core init",
+    "core:deploy": "hyperlane core deploy",
+    "warp:init:gbp": "hyperlane warp init --config configs/warp-route-gbp.yaml",
+    "warp:deploy:gbp": "hyperlane warp deploy --config configs/warp-route-gbp.yaml",
+    "warp:send:gbp": "hyperlane warp send --config configs/warp-route-gbp.yaml --self-relay",
+    "warp:init:usd": "hyperlane warp init --config configs/warp-route-usd.yaml",
+    "warp:deploy:usd": "hyperlane warp deploy --config configs/warp-route-usd.yaml",
+    "warp:send:usd": "hyperlane warp send --config configs/warp-route-usd.yaml --self-relay"
+  },
+  "devDependencies": {
+    "@hyperlane-xyz/cli": "^36.0.0"
+  }
+}

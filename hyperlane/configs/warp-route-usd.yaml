@@ -1,0 +1,18 @@
+# Hyperlane Warp Route config for the MultiX USD stablecoin.
+# Used with `hyperlane warp deploy --config configs/warp-route-usd.yaml`
+# (see ../README.md for the full run order).
+#
+# Both chains already have Hyperlane core contracts (Mailbox/ISM/IGP) deployed
+# by Abacus Works, so no `hyperlane core deploy` step is needed - the CLI
+# resolves them from the public hyperlane-registry by chain name.
+---
+somniatestnet:
+  type: collateral
+  # MultiX USD Stablecoin, deployed on Somnia testnet (frontend/constants/addresses.ts -> USD_Stable)
+  token: "0xEA4351cCDBAEed93847FC8620Ac742f17fA28399"
+
+sepolia:
+  type: synthetic
+  # Hyperlane deploys a brand-new HypERC20 here; no address to supply.
+  name: "MultiX Wrapped USD"
+  symbol: "wUSD"

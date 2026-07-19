@@ -1,0 +1,18 @@
+# Hyperlane Warp Route config for the MultiX GBP stablecoin.
+# Used with `hyperlane warp deploy --config configs/warp-route-gbp.yaml`
+# (see ../README.md for the full run order).
+#
+# Both chains already have Hyperlane core contracts (Mailbox/ISM/IGP) deployed
+# by Abacus Works, so no `hyperlane core deploy` step is needed - the CLI
+# resolves them from the public hyperlane-registry by chain name.
+---
+somniatestnet:
+  type: collateral
+  # MultiX GBP Stablecoin, deployed on Somnia testnet (frontend/constants/addresses.ts -> GBP_STABLE)
+  token: "0x84Bfd04993EE99D4f53ADA9e9F6B7B8A37f797aC"
+
+sepolia:
+  type: synthetic
+  # Hyperlane deploys a brand-new HypERC20 here; no address to supply.
+  name: "MultiX Wrapped GBP"
+  symbol: "wGBP"
