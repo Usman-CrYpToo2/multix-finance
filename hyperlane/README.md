@@ -35,15 +35,19 @@ Fund that wallet with:
 - Somnia testnet STT (for deploying/locking collateral + gas)
 - Sepolia ETH (for deploying the synthetic token + gas)
 
-## Before deploying: fill in the real token addresses
+## Token addresses (already filled in)
 
-`configs/warp-route-gbp.yaml` and `configs/warp-route-usd.yaml` currently have
-a placeholder `token: "0x000...000"` under `somniatestnet`. Replace it with
-the actual Somnia-testnet-deployed `Stablecoin` address for that currency
-(what `frontend/constants/addresses.ts` calls `GBP_STABLE` / `USD_Stable`
-**once `deploy.sh` has been run against the Somnia RPC** - the values
-currently checked into `addresses.ts` are from a local anvil deployment, not
-Somnia, so don't copy those as-is).
+`configs/warp-route-gbp.yaml` and `configs/warp-route-usd.yaml` point at the
+real MultiX stablecoins deployed on Somnia testnet:
+
+| Currency | Somnia `Stablecoin` address |
+|---|---|
+| GBP | `0x84Bfd04993EE99D4f53ADA9e9F6B7B8A37f797aC` |
+| USD | `0xEA4351cCDBAEed93847FC8620Ac742f17fA28399` |
+
+These match `frontend/constants/addresses.ts` (`GBP_STABLE` / `USD_Stable`).
+If the protocol is ever redeployed to Somnia (new `deploy.sh` run), update
+these configs to match the new addresses before re-running `warp:deploy`.
 
 ## Deploy a warp route (per stablecoin)
 

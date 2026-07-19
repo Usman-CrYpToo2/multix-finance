@@ -8,11 +8,8 @@
 ---
 somniatestnet:
   type: collateral
-  # Replace with the real Somnia-testnet-deployed USD Stablecoin address
-  # (frontend/constants/addresses.ts -> USD_Stable, once deploy.sh has been
-  # run against the Somnia RPC - the current addresses.ts values are from a
-  # local anvil deployment, not Somnia).
-  token: "0x0000000000000000000000000000000000000000"
+  # MultiX USD Stablecoin, deployed on Somnia testnet (frontend/constants/addresses.ts -> USD_Stable)
+  token: "0xEA4351cCDBAEed93847FC8620Ac742f17fA28399"
 
 sepolia:
   type: synthetic

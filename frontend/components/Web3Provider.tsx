@@ -5,7 +5,7 @@ import { createAppKit } from '@reown/appkit/react'
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
-import { mainnet, sepolia, foundry } from '@reown/appkit/networks'
+import { mainnet, sepolia, somniaTestnet } from '@reown/appkit/networks'
 import type { AppKitNetwork } from '@reown/appkit/networks'
 
 // Setup queryClient
@@ -26,8 +26,13 @@ const metadata = {
   icons: ['https://avatars.githubusercontent.com/u/37784886']
 }
 
-// 3. Define the networks 
-const networks: [AppKitNetwork, ...AppKitNetwork[]] = [mainnet, sepolia, foundry]
+// 3. Define the networks
+// Somnia Testnet is first so it's the default network AppKit connects to -
+// that's where the MultiX protocol (Factory/Router/CDPEngine/Stablecoins) is
+// actually deployed. mainnet/sepolia are kept around for the Sepolia side of
+// the Hyperlane bridge (see hyperlane/README.md); foundry/local-anvil was
+// removed since the protocol no longer lives there.
+const networks: [AppKitNetwork, ...AppKitNetwork[]] = [somniaTestnet, sepolia, mainnet]
 
 // 4. Create the Wagmi Adapter
 const wagmiAdapter = new WagmiAdapter({

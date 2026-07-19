@@ -8,11 +8,8 @@
 ---
 somniatestnet:
   type: collateral
-  # Replace with the real Somnia-testnet-deployed GBP Stablecoin address
-  # (frontend/constants/addresses.ts -> GBP_STABLE, once deploy.sh has been
-  # run against the Somnia RPC - the current addresses.ts values are from a
-  # local anvil deployment, not Somnia).
-  token: "0x0000000000000000000000000000000000000000"
+  # MultiX GBP Stablecoin, deployed on Somnia testnet (frontend/constants/addresses.ts -> GBP_STABLE)
+  token: "0x84Bfd04993EE99D4f53ADA9e9F6B7B8A37f797aC"
 
 sepolia:
   type: synthetic

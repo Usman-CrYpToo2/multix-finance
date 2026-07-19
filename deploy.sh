@@ -4,22 +4,35 @@ set -eo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ADDRESSES_FILE="$SCRIPT_DIR/frontend/constants/addresses.ts"
 
-extract_address() {
-  local label="$1"
-  local log_file="$2"
-  local line
-  local address
+# Safety margin applied on top of the live `cast estimate` gas figure for
+# every deploy/call below. 130 = 30% buffer. Override with
+# GAS_BUFFER_PCT=<n> ./deploy.sh if a particular chain needs more headroom.
+GAS_BUFFER_PCT="${GAS_BUFFER_PCT:-130}"
 
-  line=$(grep -F "${label}:" "$log_file" | tail -n1 || true)
-  address=$(printf '%s\n' "$line" | grep -oE '0x[0-9a-fA-F]{40}' | head -n1 || true)
-
-  if [ -z "$address" ]; then
-    echo "❌ Could not extract ${label} address from deployment output."
-    exit 1
-  fi
-
-  printf '%s' "$address"
-}
+# -------------------------------------------------------------------------
+# Why this script talks to `forge create` / `cast send` directly instead of
+# `forge script`:
+#
+# `forge script` computes each transaction's gas limit by running the
+# deployment locally in Foundry's simulator, which prices every opcode at
+# standard Ethereum gas costs. Some chains (Somnia testnet among them)
+# intentionally charge very different amounts for certain operations - e.g.
+# Somnia charges ~3125 gas per byte of deployed bytecode vs Ethereum's
+# 200/byte, and inflates storage/account-creation costs too (see
+# https://docs.somnia.network/developer/deployment-and-production/somnia-gas-differences-to-ethereum).
+# Foundry's local simulator has no way to know this, so its gas estimate -
+# and therefore anything derived from it via --gas-estimate-multiplier -
+# comes out far too low, and the deployment reverts out of gas.
+#
+# The fix is to source gas figures from the live RPC's own `eth_estimateGas`
+# (via `cast estimate`) instead of Foundry's local simulation, which is
+# exactly what `forge create` (single contract) and `cast send` (single
+# call) let us control directly with an explicit --gas-limit. This script
+# estimates gas for each step against the live chain right before sending
+# it, applies GAS_BUFFER_PCT on top, and verifies the on-chain receipt
+# status before moving to the next step (rather than trusting local
+# simulation success, which does not guarantee the real chain agrees).
+# -------------------------------------------------------------------------
 
 write_frontend_addresses() {
   local weth="$1"
@@ -44,6 +57,125 @@ export const CONTRACT_ADDRESSES = {
   USD_Pool: "$usd_pool"
 } as const;
 EOF
+}
+
+# --- Gas-aware deploy/call helpers (all require RPC_URL/PRIVATE_KEY/DEPLOYER
+# to already be set in the environment by the time they're called) ---
+
+buffered_gas() {
+  echo $(( $1 * GAS_BUFFER_PCT / 100 ))
+}
+
+require_receipt_success() {
+  local txhash="$1"
+  local label="$2"
+  local status
+  status="$(cast receipt "$txhash" --rpc-url "$RPC_URL" --json | python3 -c "import json,sys; print(json.load(sys.stdin)['status'])")"
+  case "$status" in
+    1|"0x1"|true|True) : ;;
+    *)
+      echo "❌ ${label} failed on-chain (tx ${txhash}, status=${status})" >&2
+      exit 1
+      ;;
+  esac
+}
+
+# Deploy a contract with no constructor args.
+# Args: label, forge-create contract ref (path:Name), path to its forge artifact json
+deploy_simple() {
+  local label="$1" contract_ref="$2" artifact_json="$3"
+  local bytecode raw_estimate gas_limit result addr txhash
+
+  bytecode="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['bytecode']['object'])" "$artifact_json")"
+  raw_estimate="$(cast estimate --rpc-url "$RPC_URL" --from "$DEPLOYER" --create "$bytecode")"
+  gas_limit="$(buffered_gas "$raw_estimate")"
+  echo "  -> ${label}: live estimate ${raw_estimate} gas, using limit ${gas_limit}" >&2
+
+  result="$(forge create "$contract_ref" \
+      --rpc-url "$RPC_URL" \
+      --private-key "$PRIVATE_KEY" \
+      --gas-limit "$gas_limit" \
+      --broadcast --json)"
+  addr="$(python3 -c "import json,sys; print(json.load(sys.stdin)['deployedTo'])" <<< "$result")"
+  txhash="$(python3 -c "import json,sys; print(json.load(sys.stdin)['transactionHash'])" <<< "$result")"
+  require_receipt_success "$txhash" "$label"
+  echo "  -> ${label} deployed at ${addr}" >&2
+  printf '%s' "$addr"
+}
+
+# Deploy a contract with constructor args.
+# Args: label, forge-create contract ref, artifact json path, constructor sig, ctor arg values...
+deploy_with_ctor() {
+  local label="$1" contract_ref="$2" artifact_json="$3" ctor_sig="$4"
+  shift 4
+  local ctor_args=("$@")
+  local bytecode encoded initcode raw_estimate gas_limit result addr txhash
+
+  bytecode="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['bytecode']['object'])" "$artifact_json")"
+  encoded="$(cast abi-encode "$ctor_sig" "${ctor_args[@]}")"
+  initcode="${bytecode}${encoded#0x}"
+  raw_estimate="$(cast estimate --rpc-url "$RPC_URL" --from "$DEPLOYER" --create "$initcode")"
+  gas_limit="$(buffered_gas "$raw_estimate")"
+  echo "  -> ${label}: live estimate ${raw_estimate} gas, using limit ${gas_limit}" >&2
+
+  # NOTE: --constructor-args must be the LAST flag - forge-create treats it
+  # as a variadic list and will otherwise swallow any flags after it
+  # (e.g. --rpc-url) as bogus extra constructor arguments.
+  result="$(forge create "$contract_ref" \
+      --rpc-url "$RPC_URL" \
+      --private-key "$PRIVATE_KEY" \
+      --gas-limit "$gas_limit" \
+      --broadcast --json \
+      --constructor-args "${ctor_args[@]}")"
+  addr="$(python3 -c "import json,sys; print(json.load(sys.stdin)['deployedTo'])" <<< "$result")"
+  txhash="$(python3 -c "import json,sys; print(json.load(sys.stdin)['transactionHash'])" <<< "$result")"
+  require_receipt_success "$txhash" "$label"
+  echo "  -> ${label} deployed at ${addr}" >&2
+  printf '%s' "$addr"
+}
+
+# Send a state-changing call with a live-estimated gas limit.
+# Args: label, to, function sig, call args...
+# Prints the full `cast send --json` receipt to stdout.
+send_call() {
+  local label="$1" to="$2" sig="$3"
+  shift 3
+  local args=("$@")
+  local raw_estimate gas_limit result txhash
+
+  raw_estimate="$(cast estimate --rpc-url "$RPC_URL" --from "$DEPLOYER" "$to" "$sig" "${args[@]}")"
+  gas_limit="$(buffered_gas "$raw_estimate")"
+  echo "  -> ${label}: live estimate ${raw_estimate} gas, using limit ${gas_limit}" >&2
+
+  result="$(cast send --rpc-url "$RPC_URL" --private-key "$PRIVATE_KEY" --gas-limit "$gas_limit" \
+      "$to" "$sig" "${args[@]}" --json)"
+  txhash="$(python3 -c "import json,sys; print(json.load(sys.stdin)['transactionHash'])" <<< "$result")"
+  require_receipt_success "$txhash" "$label"
+  printf '%s' "$result"
+}
+
+# Decode a MarketCreated(address indexed stableCoin, address indexed collateral,
+# address indexed cdpEngine, uint256 marketLength) event out of a `cast send
+# --json` receipt, printing "stableCoin cdpEngine" (checksummed) on success.
+parse_market_created() {
+  local receipt_json="$1"
+  local topic0
+  topic0="$(cast keccak "MarketCreated(address,address,address,uint256)")"
+  python3 -c '
+import json, sys
+topic0 = sys.argv[1].lower()
+receipt = json.loads(sys.argv[2])
+for log in receipt.get("logs", []):
+    topics = log.get("topics", [])
+    if topics and topics[0].lower() == topic0:
+        stable_coin = "0x" + topics[1][-40:]
+        cdp_engine = "0x" + topics[3][-40:]
+        print(stable_coin, cdp_engine)
+        break
+else:
+    print("Could not find MarketCreated log in receipt", file=sys.stderr)
+    sys.exit(1)
+' "$topic0" "$receipt_json"
 }
 
 echo "🚀 Starting deployment..."
@@ -75,6 +207,9 @@ echo "🚀 Starting deployment..."
       exit 1
   fi
 
+  DEPLOYER="$(cast wallet address --private-key "$PRIVATE_KEY")"
+  echo "👛 Deployer: $DEPLOYER"
+
   # -------------------------------
   # 3. Install dependencies
   # -------------------------------
@@ -94,26 +229,58 @@ echo "🚀 Starting deployment..."
   forge build
 
   # -------------------------------
-  # 6. Deploy contracts
+  # 6. Deploy contracts (gas-aware: see comment block above)
   # -------------------------------
   echo "📡 Deploying contracts..."
-  deploy_log_file="$(mktemp)"
-  trap 'rm -f "$deploy_log_file"' EXIT
 
-  forge script script/multix.s.sol:MultixScript \
-      --rpc-url "$RPC_URL" \
-      --broadcast \
-      --private-key "$PRIVATE_KEY" \
-      -vv | tee "$deploy_log_file"
+  weth="$(deploy_simple "MockWETH" \
+      "script/multix.s.sol:MockWETH" \
+      "out/multix.s.sol/MockWETH.json")"
 
-  weth="$(extract_address "WETH" "$deploy_log_file")"
-  oracle="$(extract_address "Oracle" "$deploy_log_file")"
-  factory="$(extract_address "Factory" "$deploy_log_file")"
-  router="$(extract_address "Router" "$deploy_log_file")"
-  gbp_stable="$(extract_address "GBP Stable" "$deploy_log_file")"
-  gbp_pool="$(extract_address "GBP Pool" "$deploy_log_file")"
-  usd_stable="$(extract_address "USD Stable" "$deploy_log_file")"
-  usd_pool="$(extract_address "USD Pool" "$deploy_log_file")"
+  oracle="$(deploy_with_ctor "HybridFiatPriceFeed (Oracle)" \
+      "src/oracle/HybridFiatPriceFeed.sol:HybridFiatPriceFeed" \
+      "out/HybridFiatPriceFeed.sol/HybridFiatPriceFeed.json" \
+      "constructor(address,address)" "$DEPLOYER" "$DEPLOYER")"
+
+  factory="$(deploy_with_ctor "MultiFiatFactory" \
+      "src/MultiFiatFactory.sol:MultiFiatFactory" \
+      "out/MultiFiatFactory.sol/MultiFiatFactory.json" \
+      "constructor(address,address)" "$weth" "$oracle")"
+
+  router="$(deploy_with_ctor "MultiFiatRouter" \
+      "src/MultiFiatRouter.sol:MultiFiatRouter" \
+      "out/MultiFiatRouter.sol/MultiFiatRouter.json" \
+      "constructor(address)" "$factory")"
+
+  echo "🔌 Wiring contracts together..."
+
+  send_call "factory.setRouter" "$factory" "setRouter(address)" "$router" > /dev/null
+
+  send_call "oracle.setBotAuthorization(factory, true)" "$oracle" \
+      "setBotAuthorization(address,bool)" "$factory" true > /dev/null
+
+  echo "🏦 Creating GBP market..."
+  gbp_receipt="$(send_call "factory.createMarket(GBP)" "$factory" \
+      "createMarket((string,string),(uint256,uint256,uint16,uint16,uint16,uint16))" \
+      "(GB,GBP)" "(10000,10000,7000,7500,500,1000)")"
+  read -r gbp_stable gbp_pool <<< "$(parse_market_created "$gbp_receipt")"
+  gbp_stable="$(cast --to-checksum-address "$gbp_stable")"
+  gbp_pool="$(cast --to-checksum-address "$gbp_pool")"
+  echo "  -> GBP Stable: $gbp_stable / GBP Pool: $gbp_pool"
+
+  echo "🏦 Creating USD market..."
+  usd_receipt="$(send_call "factory.createMarket(USD)" "$factory" \
+      "createMarket((string,string),(uint256,uint256,uint16,uint16,uint16,uint16))" \
+      "(USD,USD)" "(10000,10000,7000,8000,500,600)")"
+  read -r usd_stable usd_pool <<< "$(parse_market_created "$usd_receipt")"
+  usd_stable="$(cast --to-checksum-address "$usd_stable")"
+  usd_pool="$(cast --to-checksum-address "$usd_pool")"
+  echo "  -> USD Stable: $usd_stable / USD Pool: $usd_pool"
+
+  echo "💱 Setting oracle prices..."
+  send_call "oracle.updateEthPrice" "$oracle" "updateEthPrice(uint256)" 100000000000 > /dev/null
+  send_call "oracle.updateFxRate(GBP)" "$oracle" "updateFxRate(address,uint256)" "$gbp_pool" 130000000 > /dev/null
+  send_call "oracle.updateFxRate(USD)" "$oracle" "updateFxRate(address,uint256)" "$usd_pool" 100000000 > /dev/null
 
   write_frontend_addresses \
     "$weth" \
