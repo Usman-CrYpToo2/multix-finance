@@ -44,7 +44,7 @@ export default function FaucetPage() {
             address: CONTRACT_ADDRESSES.WETH,
             abi: wethAbi,
             functionName: 'mint',
-            
+
             args: [walletAddress as `0x${string}`, parseEther('10')]
         });
     };

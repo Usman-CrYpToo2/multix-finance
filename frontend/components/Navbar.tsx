@@ -42,6 +42,9 @@ export const Navbar = () => {
                             <Link href="/borrow" className="text-[15px] font-medium text-zinc-400 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] transition-all">
                                 Borrow
                             </Link>
+                            <Link href="/bridge" className="text-[15px] font-medium text-zinc-400 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] transition-all">
+                                Bridge
+                            </Link>
                             <Link href="/faucet" className="text-[15px] font-medium text-zinc-400 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] transition-all">
                                 Faucet
                             </Link>
@@ -84,6 +87,9 @@ export const Navbar = () => {
                     </Link>
                     <Link href="/borrow" onClick={closeMenu} className="text-lg font-medium text-zinc-400 hover:text-white transition-colors">
                         Borrow
+                    </Link>
+                    <Link href="/bridge" onClick={closeMenu} className="text-lg font-medium text-zinc-400 hover:text-white transition-colors">
+                        Bridge
                     </Link>
                     <Link href="/faucet" onClick={closeMenu} className="text-lg font-medium text-zinc-400 hover:text-white transition-colors">
                         Faucet
