@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { useReadContracts } from 'wagmi';
 import { formatEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '@/constants/addresses';
+import { SOMNIA_CHAIN_ID } from '@/constants/chain';
 import { Asset } from '@/types/market';
 import { WithdrawModal } from '@/components/modals/WithdrawModal';
 import { RepayModal } from '@/components/modals/RepayModal';
@@ -47,9 +48,9 @@ export default function MarketsPage() {
   // --- Blockchain Reads (Multicall) ---
   // We build an array of 3 contract calls for EVERY asset in our config
   const contracts = ASSET_CONFIG.flatMap(asset => [
-    { address: asset.poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'getTotalCollateral' },
-    { address: asset.poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'getTotalDebt' },
-    { address: asset.poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'ltvConfig' }
+    { chainId: SOMNIA_CHAIN_ID, address: asset.poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'getTotalCollateral' },
+    { chainId: SOMNIA_CHAIN_ID, address: asset.poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'getTotalDebt' },
+    { chainId: SOMNIA_CHAIN_ID, address: asset.poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'ltvConfig' }
   ]);
 
   const { data: contractData } = useReadContracts({ 

@@ -5,6 +5,8 @@ import { X, ArrowUpToLine, ShieldCheck } from 'lucide-react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { formatEther, parseEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '@/constants/addresses';
+import { SOMNIA_CHAIN_ID } from '@/constants/chain';
+import { useEnsureChain } from '@/hooks/useEnsureChain';
 import { Asset } from '@/types/market';
 
 // --- Minimal ABIs ---
@@ -33,6 +35,7 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
 
   // --- Read: Fetch User Debt ---
   const { data: rawDebt, refetch } = useReadContract({
+    chainId: SOMNIA_CHAIN_ID,
     address: poolAddress as `0x${string}`,
     abi: cdpAbi,
     functionName: 'getUserDebt',
@@ -47,8 +50,9 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
   const isExceedingDebt = numRepay > userDebt;
 
   // --- Write: Execute Repayment ---
-  const { data: hash, writeContract, isPending } = useWriteContract();
+  const { data: hash, writeContract, isPending, error: writeError } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { ensure: ensureOnSomnia, switchError } = useEnsureChain(SOMNIA_CHAIN_ID);
 
   // Auto-close modal after success
   useEffect(() => {
@@ -62,9 +66,11 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
   // --- Handlers ---
   const handleMax = () => setAmount(userDebt.toString());
 
-  const handleRepay = () => {
+  const handleRepay = async () => {
     if (!address || numRepay <= 0 || isExceedingDebt) return;
+    if (!(await ensureOnSomnia())) return;
     writeContract({
+      chainId: SOMNIA_CHAIN_ID,
       address: CONTRACT_ADDRESSES.ROUTER as `0x${string}`,
       abi: routerAbi,
       functionName: 'repayFiat',
@@ -194,6 +200,12 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
               </div>
             </div>
           </div>
+
+          {(switchError ?? writeError) && (
+            <p className="text-xs text-pink-400 text-center break-words">
+              {(switchError ?? writeError)!.message.split('\n')[0]}
+            </p>
+          )}
 
         </div>
       </div>

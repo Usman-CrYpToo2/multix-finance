@@ -5,6 +5,8 @@ import { X, ArrowUpToLine, ShieldCheck } from 'lucide-react';
 import { useAccount, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { formatEther, parseEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '@/constants/addresses';
+import { SOMNIA_CHAIN_ID } from '@/constants/chain';
+import { useEnsureChain } from '@/hooks/useEnsureChain';
 import { Asset } from '@/types/market';
 
 // --- Minimal ABIs ---
@@ -36,8 +38,8 @@ export const WithdrawModal = ({ asset, onClose }: WithdrawModalProps) => {
     // --- Blockchain Reads ---
     const { data: contractData, refetch } = useReadContracts({
         contracts: [
-            { address: poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'getUserCollateral', args: address ? [address] : undefined },
-            { address: poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'getSafeWithdrawableCollateral', args: address ? [address] : undefined }
+            { chainId: SOMNIA_CHAIN_ID, address: poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'getUserCollateral', args: address ? [address] : undefined },
+            { chainId: SOMNIA_CHAIN_ID, address: poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'getSafeWithdrawableCollateral', args: address ? [address] : undefined }
         ],
         query: { enabled: !!address }
     });
@@ -61,8 +63,9 @@ export const WithdrawModal = ({ asset, onClose }: WithdrawModalProps) => {
     }
 
     // --- Blockchain Writes ---
-    const { data: hash, writeContract, isPending } = useWriteContract();
+    const { data: hash, writeContract, isPending, error: writeError } = useWriteContract();
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+    const { ensure: ensureOnSomnia, switchError } = useEnsureChain(SOMNIA_CHAIN_ID);
 
     useEffect(() => {
         if (isSuccess) {
@@ -88,9 +91,11 @@ export const WithdrawModal = ({ asset, onClose }: WithdrawModalProps) => {
         }
     };
 
-    const handleWithdraw = () => {
+    const handleWithdraw = async () => {
         if (!address || numWithdraw <= 0 || isExceedingSafe) return;
+        if (!(await ensureOnSomnia())) return;
         writeContract({
+            chainId: SOMNIA_CHAIN_ID,
             address: CONTRACT_ADDRESSES.ROUTER as `0x${string}`,
             abi: routerAbi,
             functionName: 'withdrawCollateral',
@@ -224,6 +229,12 @@ export const WithdrawModal = ({ asset, onClose }: WithdrawModalProps) => {
                             </div>
                         </div>
                     </div>
+
+                    {(switchError ?? writeError) && (
+                        <p className="text-xs text-pink-400 text-center break-words">
+                            {(switchError ?? writeError)!.message.split('\n')[0]}
+                        </p>
+                    )}
 
                 </div>
             </div>

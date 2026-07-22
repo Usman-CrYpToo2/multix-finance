@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
 import { formatUnits, pad, type Address } from 'viem';
 import {
   BridgeTokenId,
@@ -63,7 +63,9 @@ type UseBridgeTransferArgs = {
 
 /** Drives the approve -> transferRemote flow for a Hyperlane warp-route transfer. */
 export const useBridgeTransfer = ({ tokenId, sourceChain, destChain, amountWei, recipient }: UseBridgeTransferArgs) => {
-  const { address } = useAccount();
+  const { address, chainId: connectedChainId } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
+  const [switchError, setSwitchError] = useState<Error | null>(null);
   const token = getToken(tokenId);
   const source = getChain(sourceChain);
   const dest = getChain(destChain);
@@ -107,8 +109,22 @@ export const useBridgeTransfer = ({ tokenId, sourceChain, destChain, amountWei, 
     return (allowance as bigint) < amountWei;
   }, [needsApproval, amountWei, allowance]);
 
-  const approve = () => {
+  /** Switches the connected wallet to the source chain first if it's on the wrong network, so the write below doesn't silently no-op. */
+  const ensureOnSourceChain = async () => {
+    if (connectedChainId === source.chainId) return true;
+    try {
+      setSwitchError(null);
+      await switchChainAsync({ chainId: source.chainId });
+      return true;
+    } catch (err) {
+      setSwitchError(err as Error);
+      return false;
+    }
+  };
+
+  const approve = async () => {
     if (!routerAddress || !spendTokenAddress || amountWei === undefined) return;
+    if (!(await ensureOnSourceChain())) return;
     approveWrite.writeContract({
       chainId: source.chainId,
       address: spendTokenAddress,
@@ -118,8 +134,9 @@ export const useBridgeTransfer = ({ tokenId, sourceChain, destChain, amountWei, 
     });
   };
 
-  const transfer = () => {
+  const transfer = async () => {
     if (!routerAddress || !recipient || amountWei === undefined || gasQuote === undefined) return;
+    if (!(await ensureOnSourceChain())) return;
     transferWrite.writeContract({
       chainId: source.chainId,
       address: routerAddress,
@@ -140,7 +157,9 @@ export const useBridgeTransfer = ({ tokenId, sourceChain, destChain, amountWei, 
     isTransferring: transferWrite.isPending || transferReceipt.isLoading,
     transferSuccess: transferReceipt.isSuccess,
     transferHash: transferWrite.data,
+    error: switchError ?? approveWrite.error ?? transferWrite.error ?? null,
     reset: () => {
+      setSwitchError(null);
       approveWrite.reset();
       transferWrite.reset();
     },

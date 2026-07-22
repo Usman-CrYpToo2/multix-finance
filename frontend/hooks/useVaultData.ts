@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useConnection, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { erc20Abi, parseEther, formatEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '@/constants/addresses';
+import { SOMNIA_CHAIN_ID } from '@/constants/chain';
+import { useEnsureChain } from '@/hooks/useEnsureChain';
 
 // --- Constants & ABIs ---
 export const SUPPORTED_ASSETS = {
@@ -52,32 +54,33 @@ export function useVaultData() {
 
   // --- Blockchain Reads ---
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: CONTRACT_ADDRESSES.WETH, abi: erc20Abi, functionName: 'allowance', args: address ? [address, CONTRACT_ADDRESSES.ROUTER] : undefined, query: { enabled: !!address }
+    chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.WETH, abi: erc20Abi, functionName: 'allowance', args: address ? [address, CONTRACT_ADDRESSES.ROUTER] : undefined, query: { enabled: !!address }
   });
 
   const { data: wethBalance, refetch: refetchWethBalance } = useReadContract({
-    address: CONTRACT_ADDRESSES.WETH, abi: erc20Abi, functionName: 'balanceOf', args: address ? [address] : undefined, query: { enabled: !!address }
+    chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.WETH, abi: erc20Abi, functionName: 'balanceOf', args: address ? [address] : undefined, query: { enabled: !!address }
   });
 
   const { data: ltvConfigData } = useReadContract({
-    address: activeAsset.poolAddress, abi: cdpAbi, functionName: 'ltvConfig',
+    chainId: SOMNIA_CHAIN_ID, address: activeAsset.poolAddress, abi: cdpAbi, functionName: 'ltvConfig',
   });
 
   const { data: rawCollateral, refetch: refetchCollateral } = useReadContract({
-    address: activeAsset.poolAddress, abi: cdpAbi, functionName: 'getUserCollateral', args: address ? [address] : undefined, query: { enabled: !!address }
+    chainId: SOMNIA_CHAIN_ID, address: activeAsset.poolAddress, abi: cdpAbi, functionName: 'getUserCollateral', args: address ? [address] : undefined, query: { enabled: !!address }
   });
 
   const { data: rawDebt, refetch: refetchDebt } = useReadContract({
-    address: activeAsset.poolAddress, abi: cdpAbi, functionName: 'getUserDebt', args: address ? [address] : undefined, query: { enabled: !!address }
+    chainId: SOMNIA_CHAIN_ID, address: activeAsset.poolAddress, abi: cdpAbi, functionName: 'getUserDebt', args: address ? [address] : undefined, query: { enabled: !!address }
   });
 
   const { data: rawBorrowRate } = useReadContract({
-    address: activeAsset.poolAddress, abi: cdpAbi, functionName: 'borrowRatePerSecond',
+    chainId: SOMNIA_CHAIN_ID, address: activeAsset.poolAddress, abi: cdpAbi, functionName: 'borrowRatePerSecond',
   });
 
   // --- Write Contracts & Wait ---
-  const { data: hash, writeContract, isPending } = useWriteContract();
+  const { data: hash, writeContract, isPending, error: writeError } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
+  const { ensure: ensureOnSomnia, switchError } = useEnsureChain(SOMNIA_CHAIN_ID);
 
   // --- Math & Logic ---
   const formattedBalance = wethBalance ? formatEther(wethBalance) : '0';
@@ -166,28 +169,31 @@ export function useVaultData() {
         return {
           text: '1. Approve WETH',
           disabled: false,
-          action: () => {
+          action: async () => {
+            if (!(await ensureOnSomnia())) return;
             setTxType('approve');
-            writeContract({ address: CONTRACT_ADDRESSES.WETH, abi: erc20Abi, functionName: 'approve', args: [CONTRACT_ADDRESSES.ROUTER, parsedDeposit] });
+            writeContract({ chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.WETH, abi: erc20Abi, functionName: 'approve', args: [CONTRACT_ADDRESSES.ROUTER, parsedDeposit] });
           }
         };
       }
       return {
         text: '2. Deposit WETH',
         disabled: false,
-        action: () => {
+        action: async () => {
+          if (!(await ensureOnSomnia())) return;
           setTxType('deposit');
-          writeContract({ address: CONTRACT_ADDRESSES.ROUTER, abi: routerAbi, functionName: 'depositCollateral', args: [activeAsset.stableAddress, address!, parsedDeposit] });
+          writeContract({ chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ROUTER, abi: routerAbi, functionName: 'depositCollateral', args: [activeAsset.stableAddress, address!, parsedDeposit] });
         }
       };
     }
 
     return {
       text: `3. Borrow ${activeAsset.symbol}`,
-      disabled: false, 
-      action: () => {
+      disabled: false,
+      action: async () => {
+        if (!(await ensureOnSomnia())) return;
         setTxType('borrow');
-        writeContract({ address: CONTRACT_ADDRESSES.ROUTER, abi: routerAbi, functionName: 'borrowFiat', args: [activeAsset.stableAddress, parsedBorrow] });
+        writeContract({ chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ROUTER, abi: routerAbi, functionName: 'borrowFiat', args: [activeAsset.stableAddress, parsedBorrow] });
       }
     };
   };
@@ -200,6 +206,6 @@ export function useVaultData() {
     maxBorrowableSPK, isExceedingBalance, isBorrowingTooMuch, buttonText, buttonAction,
     buttonDisabled, isConfirmed, txType, handleMaxClick, handleDepositChange, handleMaxBorrowClick, handleBorrowChange,
     SUPPORTED_ASSETS, selectedAssetId, setSelectedAssetId, activeAsset, borrowAPR, existingCollateral, existingDebt,
-     existingCollateralValue, existingDebtValue
+     existingCollateralValue, existingDebtValue, error: switchError ?? writeError ?? null
   };
 }

@@ -5,6 +5,8 @@ import { Link2 } from 'lucide-react';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '@/constants/addresses';
+import { SOMNIA_CHAIN_ID } from '@/constants/chain';
+import { useEnsureChain } from '@/hooks/useEnsureChain';
 
 // --- Minimal ABI just for the mint function ---
 const wethAbi = [
@@ -22,8 +24,9 @@ export default function FaucetPage() {
     const [network, setNetwork] = useState('testnet');
 
     // --Hooks ---
-    const { writeContract, data: hash, isPending, reset } = useWriteContract();
+    const { writeContract, data: hash, isPending, reset, error: writeError } = useWriteContract();
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+    const { ensure: ensureOnSomnia, switchError } = useEnsureChain(SOMNIA_CHAIN_ID);
 
     // Clear the input box 
     useEffect(() => {
@@ -38,9 +41,11 @@ export default function FaucetPage() {
         }
     }, [isSuccess, reset]);
 
-    const handleMint = () => {
+    const handleMint = async () => {
         if (!walletAddress) return;
+        if (!(await ensureOnSomnia())) return;
         writeContract({
+            chainId: SOMNIA_CHAIN_ID,
             address: CONTRACT_ADDRESSES.WETH,
             abi: wethAbi,
             functionName: 'mint',
@@ -108,6 +113,12 @@ export default function FaucetPage() {
                         {!isSuccess && <Link2 size={18} />}
                         {buttonText}
                     </button>
+
+                    {(switchError ?? writeError) && (
+                        <p className="mt-3 text-xs text-pink-400 text-center break-words">
+                            {(switchError ?? writeError)!.message.split('\n')[0]}
+                        </p>
+                    )}
                 </div>
             </div>
         </div>

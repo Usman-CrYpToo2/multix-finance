@@ -263,6 +263,12 @@ export const BridgeCard = () => {
           {buttonText}
         </button>
 
+        {bridge.error && !bridge.isTransferring && !bridge.isApproving && (
+          <p className="mt-3 text-xs text-pink-400 text-center break-words">
+            {bridge.error.message.split('\n')[0]}
+          </p>
+        )}
+
         {bridge.transferSuccess && bridge.transferHash && (
           <div className="mt-3 flex flex-col items-center gap-1">
             <a

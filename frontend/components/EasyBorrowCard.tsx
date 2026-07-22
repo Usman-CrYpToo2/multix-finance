@@ -11,7 +11,7 @@ export default function EasyBorrowCard() {
     isConfirmed, txType, handleMaxClick, handleDepositChange, handleMaxBorrowClick, handleBorrowChange,
 
     SUPPORTED_ASSETS, selectedAssetId, setSelectedAssetId, activeAsset, borrowAPR,
-    existingCollateral, existingDebt, existingCollateralValue, existingDebtValue
+    existingCollateral, existingDebt, existingCollateralValue, existingDebtValue, error
   } = useVaultData();
 
   const getProgressColor = (ltv: number) => {
@@ -231,6 +231,12 @@ export default function EasyBorrowCard() {
         >
           {buttonText}
         </button>
+
+        {error && (
+          <p className="mt-3 text-xs text-pink-400 text-center break-words">
+            {error.message.split('\n')[0]}
+          </p>
+        )}
 
         {isConfirmed && txType === 'none' && (
           <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-center text-sm font-medium animate-in fade-in slide-in-from-bottom-2">
