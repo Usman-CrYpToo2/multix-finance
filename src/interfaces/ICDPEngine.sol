@@ -13,6 +13,7 @@ interface ICDPEngine {
     event Withdraw(address indexed sender, uint256 amount);
     event Repay(address indexed payer, address indexed account, uint256 repaidDebt, uint256 remainingDebt);
     event Liquidate(address indexed liquidator, address indexed account, uint256 debtRepaid, uint256 collateralSeized);
+    event OracleUpdated(address indexed owner, address indexed newOracle);
 
     /// **********
     /// * Errors *
@@ -97,6 +98,10 @@ interface ICDPEngine {
     /// **************************
     /// * Core Engine Functions  *
     /// **************************
+
+    /// @notice Repoints this engine's price feed at a new oracle deployment, without
+    /// requiring the engine (and its vault state) to be redeployed.
+    function setOracle(address newOracle) external;
 
     /// @notice Pause all state-changing operations.
     function pause() external;

@@ -111,6 +111,16 @@ contract CDPEngine is ICDPEngine, Ownable, Pausable {
         require(msg.sender == Router, "InvalidRouter");
         _;
     }
+    /// @notice Repoints this engine's price feed at a new oracle deployment, without
+    /// requiring the engine (and its vault state) to be redeployed.
+    /// @dev The new oracle must expose the same `latestRoundData()`/`getEthPriceForPool()`
+    /// format this engine already relies on, and must have this pool whitelisted on it.
+    function setOracle(address newOracle) external onlyOwner {
+        require(newOracle != address(0), "zero address");
+        collateralConfig.collatToFiatOracle = IHybridFiatPriceFeed(newOracle);
+        emit OracleUpdated(msg.sender, newOracle);
+    }
+
     /// @notice Pause all state-changing operations.
     /// @dev Can only be called by the contract owner.
 

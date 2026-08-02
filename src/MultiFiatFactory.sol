@@ -10,7 +10,7 @@ import {IMultiFiatFactory} from "./interfaces/IMultiFiatFactory.sol";
 contract MultiFiatFactory is IMultiFiatFactory, Ownable {
     // --- State Variables ---
     address public immutable WETH;
-    address public immutable MASTER_ORACLE;
+    address public MASTER_ORACLE;
     address public ROUTER;
 
     // Maps StableCoin address => Collateral Asset (WETH) => CDPEngine Address
@@ -31,6 +31,16 @@ contract MultiFiatFactory is IMultiFiatFactory, Ownable {
         require(routerAddr != address(0), "zero address");
         ROUTER = routerAddr;
         emit routerUpdated(msg.sender, routerAddr);
+    }
+
+    /// @notice Points the factory at a new oracle deployment for markets created from now on.
+    /// @dev Does NOT retroactively repoint already-deployed CDPEngines - each engine holds
+    /// its own oracle reference set at construction. Call `CDPEngine.setOracle` on each
+    /// existing engine (via its owner) if it also needs to move to the new oracle.
+    function setMasterOracle(address newOracle) external onlyOwner {
+        require(newOracle != address(0), "Invalid Oracle Address");
+        MASTER_ORACLE = newOracle;
+        emit masterOracleUpdated(msg.sender, newOracle);
     }
 
     /// @notice Deploys a new Synthetic Fiat Token, its paired CDP Engine, and registers it to the Oracle
