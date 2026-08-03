@@ -49,11 +49,11 @@ export const BRIDGE_TOKENS: BridgeToken[] = [
     color: 'bg-pink-500',
     addresses: {
       somnia: CONTRACT_ADDRESSES.GBP_STABLE as `0x${string}`,
-      sepolia: '0x083d9B4E4Af9Aec55D00D794fb57595478F694ac',
+      sepolia: '0x21fd42f82c14Ec1E2feEfe111C40C3bcc5690e16',
     },
     routers: {
-      somnia: '0x2cDbDE03dF8492Bd84810f83a6FA7e4BFC231dcC',
-      sepolia: '0x083d9B4E4Af9Aec55D00D794fb57595478F694ac',
+      somnia: '0xDB51C9E44423343044a808c99fAF20766013Ff91',
+      sepolia: '0x21fd42f82c14Ec1E2feEfe111C40C3bcc5690e16',
     },
   },
   {
@@ -63,11 +63,11 @@ export const BRIDGE_TOKENS: BridgeToken[] = [
     color: 'bg-emerald-500',
     addresses: {
       somnia: CONTRACT_ADDRESSES.USD_Stable as `0x${string}`,
-      sepolia: '0x5Ef35b31CA4bF904e592842A898848c00c11CABc',
+      sepolia: '0x71fEe8094606B633a02e17Ed5e27C3A770f00e8b',
     },
     routers: {
-      somnia: '0xfc6596e2CD6db9C712ff3c5847c1a2BD2c8DF68c',
-      sepolia: '0x5Ef35b31CA4bF904e592842A898848c00c11CABc',
+      somnia: '0x4Cd08266375122fD5E5220e128F16b0aaF71580e',
+      sepolia: '0x71fEe8094606B633a02e17Ed5e27C3A770f00e8b',
     },
   },
 ];

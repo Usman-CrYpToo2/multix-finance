@@ -15,6 +15,6 @@
     "warp:send:usd": "hyperlane warp send --config configs/warp-route-usd.yaml --self-relay"
   },
   "devDependencies": {
-    "@hyperlane-xyz/cli": "^36.0.0"
+    "@hyperlane-xyz/cli": "^39.1.0"
   }
 }

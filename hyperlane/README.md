@@ -42,12 +42,25 @@ real MultiX stablecoins deployed on Somnia testnet:
 
 | Currency | Somnia `Stablecoin` address |
 |---|---|
-| GBP | `0x84Bfd04993EE99D4f53ADA9e9F6B7B8A37f797aC` |
-| USD | `0xEA4351cCDBAEed93847FC8620Ac742f17fA28399` |
+| GBP | `0xD1233bEa81A447aF6DBC5FB6B74EeD92F9397945` |
+| USD | `0x74Ac78F74e5cb03975Ef9D7b5A15A3F74Ab9AAa1` |
 
 These match `frontend/constants/addresses.ts` (`GBP_STABLE` / `USD_Stable`).
 If the protocol is ever redeployed to Somnia (new `deploy.sh` run), update
 these configs to match the new addresses before re-running `warp:deploy`.
+
+## Currently deployed (live)
+
+The GBP route below is live on both chains, default Hyperlane ISM/relayer
+(no `trustedRelayerIsm` override), enrolled cross-chain and confirmed via
+`routers()` reads on both ends. Full history in `../hyperlaneCCT_walkthrough.md`.
+
+| Currency | Somnia `HypERC20Collateral` | Sepolia synthetic `HypERC20` |
+|---|---|---|
+| GBP | `0xDB51C9E44423343044a808c99fAF20766013Ff91` | `0x21fd42f82c14Ec1E2feEfe111C40C3bcc5690e16` (wGBP) |
+| USD | not yet redeployed on this pass | - |
+
+`frontend/constants/bridgeConfig.ts` is wired to these addresses for the Bridge page.
 
 ## Deploy a warp route (per stablecoin)
 

@@ -272,3 +272,150 @@ Everything reconciles exactly. This proves the GBP warp route works **bidirectio
 2. **Hyperlane CLI v36's `warp deploy`/`warp apply`/`warp send` all key off a registry route ID**, not a raw file path — `warp init` is the interactive wizard that normally creates that registry entry; it can be bypassed by hand-writing the same file directly into `~/.hyperlane/deployments/warp_routes/<SYMBOL>/<label>-deploy.yaml`.
 3. **Hyperlane's own balance pre-check can be overly conservative on non-standard-gas chains** — a real "insufficient balance" error appeared well before the wallet was actually low, resolved simply by adding more margin.
 4. **This CLI version's `--relay` (self-relay) flag doesn't support Merkle-root-based ISM metadata** — it fails on the default ISM these testnets use. This doesn't block anything: Hyperlane's hosted relayer network delivers messages on its own regardless, typically within seconds to a couple of minutes, without needing `--relay` at all.
+
+---
+
+## Phase 7 — Re-deploying both warp routes after a full protocol redeploy
+
+The entire MultiX protocol was redeployed from scratch on Somnia (new WETH, Oracle with the Somnia-Agents AI price-update path, Factory, Router, and both stablecoins/CDPEngines — see `ai_oracle.md`). Since the Collateral-side warp routers wrap a *specific* stablecoin address, the old `HypERC20Collateral` routers now point at abandoned/orphaned stablecoins with no live `CDPEngine` behind them — both warp routes had to be redeployed pointing at the new stablecoin addresses.
+
+This machine had no prior local Hyperlane registry state (`~/.hyperlane/deployments/warp_routes` was empty), so the registry files were hand-written fresh, following the exact same pattern as Phase 2.3 (`somnia-sepolia-deploy.yaml` per currency, giving route IDs `GBP/somnia-sepolia` and `USD/somnia-sepolia`), pointed at the new stablecoin addresses:
+
+```yaml
+# GBP/somnia-sepolia-deploy.yaml
+somniatestnet:
+  type: collateral
+  token: "0xD1233bEa81A447aF6DBC5FB6B74EeD92F9397945"   # new GBP Stablecoin
+  owner: "0xcf9e1825Fe713bD6c7508b9f12c42Cb333fe839e"
+sepolia:
+  type: synthetic
+  name: "MultiX Wrapped GBP"
+  symbol: "wGBP"
+  decimals: 18
+  owner: "0xcf9e1825Fe713bD6c7508b9f12c42Cb333fe839e"
+```
+
+The deployment plan was previewed first (`npx hyperlane warp deploy -w GBP/somnia-sepolia`, killed at the confirmation prompt) to confirm both chains' real Mailbox addresses resolved correctly before spending anything, then run for real:
+
+```shell
+npx hyperlane warp deploy -w GBP/somnia-sepolia -y
+npx hyperlane warp deploy -w USD/somnia-sepolia -y
+```
+
+Both succeeded on the first attempt (no `insufficient balance` false-positive this time — the wallet had ~8.1 STT / ~0.07 Sepolia ETH going in, comfortably above the ~0.55 STT / ~0.0056 ETH each route costs).
+
+**New resulting addresses:**
+
+| Chain | Contract | Address |
+|---|---|---|
+| Somnia | GBP `HypERC20Collateral` (wraps new GBP Stablecoin) | `0x17D7C47168C194DA59e22353eB6C7be1BB0ad18B` |
+| Sepolia | new wGBP `HypERC20` synthetic | `0x2A1603a216F0ceb626162dE9Ce4f47f305452b33` |
+| Somnia | USD `HypERC20Collateral` (wraps new USD Stablecoin) | `0x4Cd08266375122fD5E5220e128F16b0aaF71580e` |
+| Sepolia | new wUSD `HypERC20` synthetic | `0x71fEe8094606B633a02e17Ed5e27C3A770f00e8b` |
+
+Gas cost: identical to Phase 3/4 (`0.55024974 STT` + `~0.0056 ETH` per route).
+
+Updated in the codebase to match: `hyperlane/configs/warp-route-gbp.yaml`, `hyperlane/configs/warp-route-usd.yaml`, `hyperlane/README.md`, and `frontend/constants/bridgeConfig.ts` (the `routers`/`addresses.sepolia` fields the Bridge page reads).
+
+**Neither new route has been transfer-tested yet** (no `warp send` lock/mint or burn/unlock run against these new addresses) — the old GBP round-trip proof in Phases 5–6 was against the now-abandoned stablecoin/router pair and doesn't carry over. Re-run that test against the new routes before relying on them.
+
+---
+
+## Phase 8 — GBP delivery stall (Abacus Works validator down) and a second GBP redeploy
+
+A real user transfer (550 GBP, Somnia → Sepolia) through the Phase 7 GBP route (`0x17D7C47168C194DA59e22353eB6C7be1BB0ad18B` collateral / `0x2A1603a216F0ceb626162dE9Ce4f47f305452b33` synthetic) dispatched successfully on Somnia (message IDs `0x0b7156a7...` and `0x3b8300a6...`, both `DispatchId` events confirmed) but **never delivered** on Sepolia (`Mailbox.delivered()` stayed `false` for 45+ minutes across repeated checks).
+
+**Root cause, independently confirmed (not just inferred from the CLI):**
+- `hyperlane status --relay` on the pending message reported the Sepolia-side aggregation ISM's `messageIdMultisigIsm` validator (`Abacus Works`, `0xb3b27A27BfA94002d344E9Cf5217A0e3502E018b`) as `status: "pending"` at `checkpointIndex: 30` — unchanged across 4 separate checks including one with `--disableProxy`.
+- Looked up that validator's announced storage location directly via the on-chain `ValidatorAnnounce` contract (`0x0b9A4A46f50f91f353B8Aa0F3Ca80E35E253bDd8`, from the public hyperlane-registry's `chains/somniatestnet/addresses.yaml`): `s3://hyperlane-testnet4-somniatestnet-validator-0/us-east-1`.
+- Fetched `checkpoint_latest_index.json` directly from that bucket (bypassing the CLI/registry entirely): latest published index **29**, with an S3 `Last-Modified` header of **2026-07-22** — 11 days stale at the time of checking. The validator's own publicly-announced signer output confirms it stopped publishing checkpoints entirely, one index short of what this message needed (30).
+- Self-relay (`--relay`) also fails independently of the validator's status, with `Failed to build for submodule 0: Merkle proofs are not yet supported` — a CLI-level limitation for merkle-root-based ISM metadata (same bug noted in Phase 5), so self-relay was never a working fallback here regardless.
+
+**Conclusion:** this is dead third-party testnet infrastructure (Abacus Works' Somnia-origin validator), not a bug in the redeployed contracts, not insufficient balance (verified: deployer had ~7 STT / ~0.11 ETH; the dispatch's IGP payment of `16197450000001` wei matched `quoteGasPayment()` exactly), and not something a plain redeploy of the warp route can route around — the stalled ISM/validator is a Sepolia-side default trust setting for the Somnia→Sepolia lane as a whole, not tied to a specific route's contract addresses.
+
+**Recovery options identified but not yet executed:**
+1. Wait for Abacus Works to resume publishing checkpoints (no ETA; 11+ days stale already at time of writing).
+2. Deploy a `trustedRelayerIsm` on Sepolia (checks `msg.sender == trustedRelayer` instead of requiring multisig signatures), point the Sepolia synthetic router's `interchainSecurityModule()` at it via the owner-only setter, then self-submit `Mailbox.process()` directly — fully bypasses the dead validator. Estimated cost: <0.005 ETH on Sepolia only, no Somnia cost, ~10-15 min of work. Trade-off: centralizes verification to whichever address is designated trusted relayer until reverted.
+
+The 550 GBP from this stuck transfer remains locked in the Phase 7 collateral router (`0x17D7C47168C194DA59e22353eB6C7be1BB0ad18B`) — not lost, just pending until one of the above happens.
+
+### Second GBP redeploy, using a dedicated `BRIDGE_DEPLOYER_KEY`
+
+After waiting without resolution, the user asked for a fresh GBP warp route redeploy, explicitly using a separate `BRIDGE_DEPLOYER_KEY` wallet (`0xa8DD47BFab116C0862D6AD2B1cB05EfD58865fA1`, funded with ~8 STT / ~0.13 ETH) rather than the main deployer key, with default ISM settings (no `trustedRelayerIsm` override) — despite being told this would very likely hit the identical dead-validator wall on any real transfer, since the default ISM is a Sepolia-side, chain-pair-level setting unrelated to which key deploys the route.
+
+Registry entry written to a new label (`GBP/somnia-sepolia-v2`, keeping the Phase 7 `GBP/somnia-sepolia` entry intact so the still-locked 550 GBP there remains traceable):
+
+```yaml
+somniatestnet:
+  type: collateral
+  token: "0xD1233bEa81A447aF6DBC5FB6B74EeD92F9397945"   # same real GBP Stablecoin, unchanged
+  owner: "0xa8DD47BFab116C0862D6AD2B1cB05EfD58865fA1"
+sepolia:
+  type: synthetic
+  name: "MultiX Wrapped GBP"
+  symbol: "wGBP"
+  decimals: 18
+  owner: "0xa8DD47BFab116C0862D6AD2B1cB05EfD58865fA1"
+```
+
+Deployed via `npx hyperlane warp deploy -w GBP/somnia-sepolia-v2 -y` with `HYP_KEY` set to `BRIDGE_DEPLOYER_KEY`. Succeeded (one benign warning: Somnia's block explorer doesn't support the CLI's Etherscan-style source-verification call, contract still deployed and functional).
+
+**New addresses:**
+
+| Chain | Contract | Address |
+|---|---|---|
+| Somnia | GBP `HypERC20Collateral` v2 | `0xcFC8bEE8fe59D67Bf6F1e7F3d4883dB63512755B` |
+| Sepolia | wGBP `HypERC20` synthetic v2 | `0x2d22d54aa7b1Be1486dABE03b05aF61135629775` |
+
+Cross-chain enrollment verified on-chain (`routers(11155111)` on the new Somnia collateral router returns the new Sepolia synthetic address correctly). `frontend/constants/bridgeConfig.ts`'s GBP entry updated to these v2 addresses. USD route left untouched at Phase 7's addresses per explicit request — GBP is to be tested first.
+
+**This route still relies on the same default (currently-dead) ISM/validator as Phase 7.** No transfer has been tested against it yet. If a real transfer here also stalls, that would fully confirm the redeploy-with-default-ISM approach cannot work while Abacus Works' validator stays down, leaving the `trustedRelayerIsm` override (or further waiting) as the only real paths forward.
+
+---
+
+## Phase 9 — Third GBP redeploy, validator confirmed back online, CLI upgraded
+
+Before redeploying again, the Abacus Works Somnia-origin validator's health was checked directly (not inferred): its announced checkpoint bucket (`s3://hyperlane-testnet4-somniatestnet-validator-0/us-east-1`) now reports `checkpoint_latest_index.json` = **40**, with an S3 `Last-Modified` timestamp from earlier the same day — a live, actively-publishing validator, unlike the Phase 8 stall (stuck at index 29, 11 days stale). This means the default hosted-relayer path should work again without a `trustedRelayerIsm` workaround.
+
+Also, per explicit instruction, current Hyperlane docs (docs.hyperlane.xyz) were re-checked directly rather than relying on this file's earlier notes — confirmed the CLI flow is unchanged: `hyperlane warp init` writes a registry entry, `hyperlane warp deploy -w <SYMBOL>/<id>` deploys both legs and enrolls the routers, `hyperlane warp send --relay -w <SYMBOL>/<id>` (or the CLI's `hyperlane relayer` for a standalone self-relay process) tests a transfer. No `--config` flag exists in any current version — registry route IDs are still the only interface.
+
+The installed CLI (`hyperlane/package.json`) was upgraded from `36.0.0` → **`39.1.0`** (latest on npm at time of writing), since 36.0.0 was the version with the known `--relay`/Merkle-proof self-relay bug from Phase 5.
+
+A fresh registry entry was hand-written at a new label to avoid clobbering the Phase 8 v2 entry, using the main deployer key (`0xcf9e1825Fe713bD6c7508b9f12c42Cb333fe839e`, confirmed funded: ~6.99 STT / ~0.158 Sepolia ETH) and **default ISM (no override)** — the "normal automatic" bridge, not the `trustedRelayerIsm` path:
+
+```yaml
+# ~/.hyperlane/deployments/warp_routes/GBP/somnia-sepolia-v3-deploy.yaml
+somniatestnet:
+  type: collateral
+  token: "0xD1233bEa81A447aF6DBC5FB6B74EeD92F9397945"
+  owner: "0xcf9e1825Fe713bD6c7508b9f12c42Cb333fe839e"
+sepolia:
+  type: synthetic
+  name: "MultiX Wrapped GBP"
+  symbol: "wGBP"
+  decimals: 18
+  owner: "0xcf9e1825Fe713bD6c7508b9f12c42Cb333fe839e"
+```
+
+Plan previewed first (`hyperlane warp deploy -w GBP/somnia-sepolia-v3`, killed before confirming) — both real Mailbox addresses resolved correctly (Somnia `0x7d498740A4572f2B5c6b0A1Ba9d1d9DbE207e89E`, Sepolia `0xfFAEF09B3cd11D9b20d1a19bECca54EEC2884766`), ISM column showed "No ISM config(s) specified" on both legs (confirming default/no override), then deployed for real:
+
+```shell
+npx hyperlane warp deploy -w GBP/somnia-sepolia-v3 -y
+```
+
+Succeeded on the first attempt. One benign warning (same as Phase 8 v2): Somnia's block explorer doesn't support the CLI's Etherscan-style source-verification call — contract still deploys and functions correctly regardless.
+
+**New addresses:**
+
+| Chain | Contract | Address |
+|---|---|---|
+| Somnia | GBP `HypERC20Collateral` v3 | `0xDB51C9E44423343044a808c99fAF20766013Ff91` |
+| Sepolia | wGBP `HypERC20` synthetic v3 | `0x21fd42f82c14Ec1E2feEfe111C40C3bcc5690e16` |
+
+Gas cost: identical to prior deploys (`0.55024974 STT` + `0.005753420839842714 ETH`).
+
+Cross-chain enrollment independently verified via direct `routers()` reads (not just trusting the CLI's own success message):
+- Somnia collateral router's `routers(11155111)` → `0x21fd42f82c14Ec1E2feEfe111C40C3bcc5690e16` (matches the Sepolia synthetic) ✓
+- Sepolia synthetic's `routers(50312)` → `0xDB51C9E44423343044a808c99fAF20766013Ff91` (matches the Somnia collateral router) ✓
+
+`frontend/constants/bridgeConfig.ts` GBP entry and `hyperlane/README.md` updated to these v3 addresses. **No transfer has been self-tested against this route** — per explicit request, the user will test it themselves (presumably through the Bridge page UI) before USD gets the same treatment. The Phase 7 (`GBP/somnia-sepolia`, 550 GBP stuck) and Phase 8 v2 (`GBP/somnia-sepolia-v2`) routes/registry entries are left untouched/orphaned; this v3 route is the one now wired into the frontend.
