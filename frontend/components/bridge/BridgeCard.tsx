@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { ArrowDownUp, ChevronDown, ExternalLink } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowDownUp, Check, ChevronDown, ExternalLink, Loader2 } from 'lucide-react';
 import { useAccount } from 'wagmi';
 import { formatUnits, isAddress, parseUnits, type Address } from 'viem';
 import { useAppKit } from '@reown/appkit/react';
@@ -28,14 +28,12 @@ export const BridgeCard = () => {
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [sendToCustom, setSendToCustom] = useState(false);
   const [customAddress, setCustomAddress] = useState('');
-  const [agreed, setAgreed] = useState(false);
 
   const token = getToken(tokenId);
   const source = getChain(sourceChain);
   const dest = getChain(destChain);
 
   const sourceBalance = useChainTokenBalance(sourceChain, tokenId, address);
-  const destBalance = useChainTokenBalance(destChain, tokenId, address);
 
   const numAmount = Number(amount) || 0;
   const exceedsBalance = Boolean(
@@ -55,6 +53,13 @@ export const BridgeCard = () => {
   }
 
   const bridge = useBridgeTransfer({ tokenId, sourceChain, destChain, amountWei, recipient });
+  const destBalance = bridge.destBalance;
+
+  // The source balance is already final once the dispatch tx confirms (tokens are
+  // locked/burned in that same tx) - refetch it then instead of waiting on a reload.
+  useEffect(() => {
+    if (bridge.transferSuccess) sourceBalance.refetch();
+  }, [bridge.transferSuccess, sourceBalance.refetch]);
 
   const swapChains = () => {
     setSourceChain(destChain);
@@ -78,10 +83,11 @@ export const BridgeCard = () => {
     buttonText = 'Insufficient balance';
   } else if (sendToCustom && !customAddressValid) {
     buttonText = customAddress ? 'Invalid destination address' : 'Enter a destination address';
-  } else if (!agreed) {
-    buttonText = 'Accept terms to continue';
+  } else if (bridge.delivered) {
+    buttonText = 'Bridge Complete';
+    buttonDisabled = true;
   } else if (bridge.transferSuccess) {
-    buttonText = 'Bridge Submitted';
+    buttonText = 'Relaying...';
     buttonDisabled = true;
   } else if (bridge.isTransferring) {
     buttonText = 'Bridging...';
@@ -240,20 +246,6 @@ export const BridgeCard = () => {
           </div>
         )}
 
-        {/* Terms */}
-        <label className="flex items-center gap-2 mt-4 px-1 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={agreed}
-            onChange={(e) => setAgreed(e.target.checked)}
-            className="w-4 h-4 rounded border-white/20 bg-white/5 accent-indigo-500"
-          />
-          <span className="text-sm text-zinc-400">
-            I have read and agree to the{' '}
-            <span className="underline text-zinc-300 hover:text-white transition-colors">Terms and Conditions</span>.
-          </span>
-        </label>
-
         {/* Action button */}
         <button
           onClick={buttonAction}
@@ -270,19 +262,14 @@ export const BridgeCard = () => {
         )}
 
         {bridge.transferSuccess && bridge.transferHash && (
-          <div className="mt-3 flex flex-col items-center gap-1">
-            <a
-              href={`${explorerBase[sourceChain]}${bridge.transferHash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300"
-            >
-              View transaction <ExternalLink size={12} />
-            </a>
-            <p className="text-xs text-zinc-500 text-center">
-              Funds usually arrive on {dest.name} within a few minutes once the message is relayed.
-            </p>
-          </div>
+          <BridgeProgress
+            sourceChain={sourceChain}
+            destChain={destChain}
+            transferHash={bridge.transferHash}
+            messageId={bridge.messageId}
+            delivered={bridge.delivered}
+            elapsedSeconds={bridge.elapsedSeconds}
+          />
         )}
       </div>
 
@@ -307,6 +294,85 @@ export const BridgeCard = () => {
       {activeModal === 'token' && (
         <SelectTokenModal selectedId={tokenId} onSelect={setTokenId} onClose={() => setActiveModal(null)} />
       )}
+    </div>
+  );
+};
+
+const formatElapsed = (seconds: number) => {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+};
+
+type BridgeProgressProps = {
+  sourceChain: ChainKey;
+  destChain: ChainKey;
+  transferHash: `0x${string}`;
+  messageId: `0x${string}` | undefined;
+  delivered: boolean;
+  elapsedSeconds: number;
+};
+
+/** Live delivery tracker: dispatch -> relay -> delivered, polling the destination balance so it updates itself with no reload. */
+const BridgeProgress = ({ sourceChain, destChain, transferHash, messageId, delivered, elapsedSeconds }: BridgeProgressProps) => {
+  const source = getChain(sourceChain);
+  const dest = getChain(destChain);
+
+  const StepIcon = ({ done, active }: { done: boolean; active: boolean }) =>
+    done ? (
+      <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
+        <Check size={12} className="text-white" strokeWidth={3} />
+      </div>
+    ) : active ? (
+      <div className="w-5 h-5 rounded-full bg-indigo-500/20 flex items-center justify-center shrink-0">
+        <Loader2 size={12} className="text-indigo-400 animate-spin" />
+      </div>
+    ) : (
+      <div className="w-5 h-5 rounded-full bg-white/5 border border-white/10 shrink-0" />
+    );
+
+  return (
+    <div className="mt-4 bg-black/20 border border-white/10 rounded-xl p-4">
+      <div className="flex items-start gap-3">
+        <div className="flex flex-col items-center gap-0 pt-0.5">
+          <StepIcon done active={false} />
+          <div className={`w-px h-6 ${delivered ? 'bg-emerald-500' : 'bg-white/10'}`} />
+          <StepIcon done={delivered} active={!delivered} />
+        </div>
+        <div className="flex-1 flex flex-col gap-5">
+          <div>
+            <p className="text-sm text-white font-medium">Submitted on {source.name}</p>
+            <a
+              href={`${explorerBase[sourceChain]}${transferHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 mt-0.5"
+            >
+              View transaction <ExternalLink size={11} />
+            </a>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-white">
+              {delivered ? `Delivered on ${dest.name}` : `Relaying to ${dest.name}...`}
+            </p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {delivered
+                ? 'Destination balance updated automatically.'
+                : `Waiting for the Hyperlane relayer · ${formatElapsed(elapsedSeconds)} elapsed`}
+            </p>
+            {messageId && (
+              <a
+                href={`https://explorer.hyperlane.xyz/message/${messageId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 mt-1"
+              >
+                Track on Hyperlane Explorer <ExternalLink size={11} />
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

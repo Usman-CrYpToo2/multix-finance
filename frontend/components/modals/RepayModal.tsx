@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { X, ArrowUpToLine, ShieldCheck } from 'lucide-react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { formatEther, parseEther } from 'viem';
+import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt } from 'wagmi';
+import { erc20Abi, formatEther, parseEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '@/constants/addresses';
 import { SOMNIA_CHAIN_ID } from '@/constants/chain';
 import { useEnsureChain } from '@/hooks/useEnsureChain';
+import { useGasBufferedWrite } from '@/hooks/useGasBufferedWrite';
+import { useOraclePrices } from '@/hooks/useOraclePrices';
 import { Asset } from '@/types/market';
 
 // --- Minimal ABIs ---
@@ -31,7 +33,8 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
   const isUSD = asset.symbol === 'USD';
   const poolAddress = isUSD ? CONTRACT_ADDRESSES.USD_Pool : CONTRACT_ADDRESSES.GBP_POOL;
   const stableAddress = isUSD ? CONTRACT_ADDRESSES.USD_Stable : CONTRACT_ADDRESSES.GBP_STABLE;
-  const activePrice = isUSD ? 1.0 : 1.30; 
+  const { gbpUsdPrice, usdUsdPrice } = useOraclePrices();
+  const activePrice = isUSD ? usdUsdPrice : gbpUsdPrice;
 
   // --- Read: Fetch User Debt ---
   const { data: rawDebt, refetch } = useReadContract({
@@ -44,13 +47,28 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
   });
 
   const userDebt = rawDebt ? Number(formatEther(rawDebt as bigint)) : 0;
-  
+
+  // --- Read: the wallet's actual stablecoin balance. repayFiat burns straight from this
+  // balance (no allowance involved), so it can never cover more than the debt figure implies -
+  // interest keeps accruing on the debt side, and tokens can leave the wallet (e.g. bridged
+  // out) without reducing debt. Repaying more than this reverts on-chain every time. ---
+  const { data: balanceData, refetch: refetchBalance } = useReadContracts({
+    contracts: [
+      { chainId: SOMNIA_CHAIN_ID, address: stableAddress as `0x${string}`, abi: erc20Abi, functionName: 'balanceOf', args: address ? [address] : undefined },
+    ],
+    query: { enabled: !!address },
+  });
+  const rawBalance = balanceData?.[0]?.result as bigint | undefined;
+  const userBalance = rawBalance ? Number(formatEther(rawBalance)) : 0;
+  const maxRepayable = Math.min(userDebt, userBalance);
+
   // Logic checks
   const numRepay = Number(amount) || 0;
   const isExceedingDebt = numRepay > userDebt;
+  const isExceedingBalance = !isExceedingDebt && numRepay > userBalance;
 
   // --- Write: Execute Repayment ---
-  const { data: hash, writeContract, isPending, error: writeError } = useWriteContract();
+  const { data: hash, writeWithGas, isPending, error: writeError } = useGasBufferedWrite(SOMNIA_CHAIN_ID);
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const { ensure: ensureOnSomnia, switchError } = useEnsureChain(SOMNIA_CHAIN_ID);
 
@@ -58,35 +76,40 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
   useEffect(() => {
     if (isSuccess) {
       refetch(); // Refresh the debt balance
+      refetchBalance();
       const timer = setTimeout(() => onClose(), 2000);
       return () => clearTimeout(timer);
     }
-  }, [isSuccess, onClose, refetch]);
+  }, [isSuccess, onClose, refetch, refetchBalance]);
 
   // --- Handlers ---
-  const handleMax = () => setAmount(userDebt.toString());
+  const handleMax = () => setAmount(maxRepayable.toString());
 
   const handleRepay = async () => {
-    if (!address || numRepay <= 0 || isExceedingDebt) return;
+    if (!address || numRepay <= 0 || isExceedingDebt || isExceedingBalance) return;
     if (!(await ensureOnSomnia())) return;
-    writeContract({
+    writeWithGas({
       chainId: SOMNIA_CHAIN_ID,
       address: CONTRACT_ADDRESSES.ROUTER as `0x${string}`,
       abi: routerAbi,
       functionName: 'repayFiat',
-      args: [stableAddress as `0x${string}`, address, parseEther(amount)]
+      args: [stableAddress as `0x${string}`, address, parseEther(amount)],
+      account: address,
     });
   };
 
   // Dynamic Button State
   let buttonText = `Repay with ${asset.symbol}`;
-  let buttonDisabled = !amount || numRepay <= 0 || isExceedingDebt;
+  let buttonDisabled = !amount || numRepay <= 0 || isExceedingDebt || isExceedingBalance;
 
   if (!isConnected) {
     buttonText = 'Connect Wallet';
     buttonDisabled = true;
   } else if (isExceedingDebt) {
     buttonText = 'Amount exceeds Debt';
+    buttonDisabled = true;
+  } else if (isExceedingBalance) {
+    buttonText = `Insufficient ${asset.symbol} balance`;
     buttonDisabled = true;
   } else if (isPending) {
     buttonText = 'Confirm in Wallet...';
@@ -137,7 +160,7 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
                     // Only allow numbers and decimals
                     if (val === '' || /^\d*\.?\d*$/.test(val)) setAmount(val);
                   }}
-                  className={`w-full text-right bg-transparent text-xl font-bold focus:outline-none placeholder:text-zinc-600 ${isExceedingDebt ? 'text-pink-500' : 'text-white'}`}
+                  className={`w-full text-right bg-transparent text-xl font-bold focus:outline-none placeholder:text-zinc-600 ${isExceedingDebt || isExceedingBalance ? 'text-pink-500' : 'text-white'}`}
                 />
                 <div className="text-xs text-zinc-500 mt-1 flex gap-2">
                   <span>${(numRepay * activePrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -146,12 +169,14 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
             </div>
             
             <div className="flex justify-between mt-2">
-              <span className={`text-xs ${isExceedingDebt ? 'text-pink-500 animate-pulse' : 'text-transparent'}`}>
-                Exceeds maximum debt
+              <span className={`text-xs ${isExceedingDebt || isExceedingBalance ? 'text-pink-500 animate-pulse' : 'text-transparent'}`}>
+                {isExceedingDebt ? 'Exceeds maximum debt' : isExceedingBalance ? `Exceeds ${asset.symbol} wallet balance` : 'Exceeds maximum debt'}
               </span>
-              <span className="text-xs text-zinc-500">
-                Debt: {userDebt.toLocaleString(undefined, { maximumFractionDigits: 4 })} {asset.symbol} 
+              <span className="text-xs text-zinc-500 text-right">
+                Debt: {userDebt.toLocaleString(undefined, { maximumFractionDigits: 4 })} {asset.symbol}
                 <button onClick={handleMax} className="text-pink-400 font-medium ml-1 hover:text-pink-300">MAX</button>
+                <br />
+                Wallet: {userBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })} {asset.symbol}
               </span>
             </div>
           </div>

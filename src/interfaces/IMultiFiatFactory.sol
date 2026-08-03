@@ -26,6 +26,8 @@ interface IMultiFiatFactory {
 
     event routerUpdated(address indexed owner, address indexed router);
 
+    event masterOracleUpdated(address indexed owner, address indexed newOracle);
+
     // --- State Variable Getters ---
 
     /// @notice Returns the global WETH address used as collateral
@@ -46,6 +48,11 @@ interface IMultiFiatFactory {
     function allMarkets(uint256 index) external view returns (address);
 
     // --- Core Functions ---
+
+    /// @notice Updates the Master Oracle address used for markets created from now on.
+    /// @dev Does NOT retroactively update already-deployed CDPEngines - call
+    /// `CDPEngine.setOracle` on each existing engine separately if it needs to move too.
+    function setMasterOracle(address newOracle) external;
 
     /// @notice Deploys a new Synthetic Fiat Token, its paired CDP Engine, and registers it to the Oracle
     /// @param tParams Struct containing the country and currency strings

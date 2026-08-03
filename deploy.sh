@@ -282,6 +282,12 @@ echo "🚀 Starting deployment..."
   send_call "oracle.updateFxRate(GBP)" "$oracle" "updateFxRate(address,uint256)" "$gbp_pool" 130000000 > /dev/null
   send_call "oracle.updateFxRate(USD)" "$oracle" "updateFxRate(address,uint256)" "$usd_pool" 100000000 > /dev/null
 
+  echo "🤖 Configuring Somnia AI-agent price sources..."
+  send_call "oracle.setEthApiSource" "$oracle" "setEthApiSource(string,string)" \
+      "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd" "ethereum.usd" > /dev/null
+  send_call "oracle.setPoolApiSource(GBP)" "$oracle" "setPoolApiSource(address,string,string)" \
+      "$gbp_pool" "https://api.frankfurter.app/latest?from=GBP&to=USD" "rates.USD" > /dev/null
+
   write_frontend_addresses \
     "$weth" \
     "$oracle" \

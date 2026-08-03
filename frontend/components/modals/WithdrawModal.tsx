@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { X, ArrowUpToLine, ShieldCheck } from 'lucide-react';
-import { useAccount, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useReadContracts, useWaitForTransactionReceipt } from 'wagmi';
 import { formatEther, parseEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '@/constants/addresses';
 import { SOMNIA_CHAIN_ID } from '@/constants/chain';
 import { useEnsureChain } from '@/hooks/useEnsureChain';
+import { useGasBufferedWrite } from '@/hooks/useGasBufferedWrite';
+import { useOraclePrices } from '@/hooks/useOraclePrices';
 import { Asset } from '@/types/market';
 
 // --- Minimal ABIs ---
-const COLLATERAL_PRICE = 1000; // Ready for the Oracle!
-
 const cdpAbi = [
     { type: 'function', name: 'getUserCollateral', inputs: [{ name: '_account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' },
     { type: 'function', name: 'getSafeWithdrawableCollateral', inputs: [{ name: '_user', type: 'address' }], outputs: [{ name: 'safeAmount', type: 'uint256' }], stateMutability: 'view' }
@@ -34,6 +34,7 @@ export const WithdrawModal = ({ asset, onClose }: WithdrawModalProps) => {
     const isUSD = asset.symbol === 'USD';
     const poolAddress = isUSD ? CONTRACT_ADDRESSES.USD_Pool : CONTRACT_ADDRESSES.GBP_POOL;
     const stableAddress = isUSD ? CONTRACT_ADDRESSES.USD_Stable : CONTRACT_ADDRESSES.GBP_STABLE;
+    const { ethUsdPrice: COLLATERAL_PRICE } = useOraclePrices();
 
     // --- Blockchain Reads ---
     const { data: contractData, refetch } = useReadContracts({
@@ -63,7 +64,7 @@ export const WithdrawModal = ({ asset, onClose }: WithdrawModalProps) => {
     }
 
     // --- Blockchain Writes ---
-    const { data: hash, writeContract, isPending, error: writeError } = useWriteContract();
+    const { data: hash, writeWithGas, isPending, error: writeError } = useGasBufferedWrite(SOMNIA_CHAIN_ID);
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
     const { ensure: ensureOnSomnia, switchError } = useEnsureChain(SOMNIA_CHAIN_ID);
 
@@ -94,12 +95,13 @@ export const WithdrawModal = ({ asset, onClose }: WithdrawModalProps) => {
     const handleWithdraw = async () => {
         if (!address || numWithdraw <= 0 || isExceedingSafe) return;
         if (!(await ensureOnSomnia())) return;
-        writeContract({
+        writeWithGas({
             chainId: SOMNIA_CHAIN_ID,
             address: CONTRACT_ADDRESSES.ROUTER as `0x${string}`,
             abi: routerAbi,
             functionName: 'withdrawCollateral',
-            args: [stableAddress as `0x${string}`, parseEther(amount)]
+            args: [stableAddress as `0x${string}`, parseEther(amount)],
+            account: address,
         });
     };
 

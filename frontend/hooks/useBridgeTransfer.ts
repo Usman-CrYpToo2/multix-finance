@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
-import { formatUnits, pad, type Address } from 'viem';
+import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
+import { formatUnits, keccak256, pad, stringToHex, type Address } from 'viem';
 import {
   BridgeTokenId,
   ChainKey,
@@ -8,6 +8,10 @@ import {
   getToken,
   isCollateralSide,
 } from '@/constants/bridgeConfig';
+import { useGasBufferedWrite } from '@/hooks/useGasBufferedWrite';
+
+/** topic0 for the Mailbox's `DispatchId(bytes32 indexed messageId)` event - same for every Hyperlane Mailbox. */
+const DISPATCH_ID_TOPIC = keccak256(stringToHex('DispatchId(bytes32)'));
 
 export const erc20Abi = [
   { type: 'function', name: 'balanceOf', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view' },
@@ -24,7 +28,12 @@ export const tokenRouterAbi = [
 export const addressToBytes32 = (address: Address) => pad(address, { size: 32 });
 
 /** Reads a wallet's balance + decimals for a token on a specific bridge chain. */
-export const useChainTokenBalance = (chainKey: ChainKey, tokenId: BridgeTokenId, address: Address | undefined) => {
+export const useChainTokenBalance = (
+  chainKey: ChainKey,
+  tokenId: BridgeTokenId,
+  address: Address | undefined,
+  options?: { refetchInterval?: number | false }
+) => {
   const chain = getChain(chainKey);
   const token = getToken(tokenId);
   const tokenAddress = token.addresses[chainKey];
@@ -34,7 +43,7 @@ export const useChainTokenBalance = (chainKey: ChainKey, tokenId: BridgeTokenId,
       { chainId: chain.chainId, address: tokenAddress, abi: erc20Abi, functionName: 'balanceOf', args: address ? [address] : undefined },
       { chainId: chain.chainId, address: tokenAddress, abi: erc20Abi, functionName: 'decimals' },
     ],
-    query: { enabled: Boolean(address && tokenAddress) },
+    query: { enabled: Boolean(address && tokenAddress), refetchInterval: options?.refetchInterval ?? false },
   });
 
   if (!tokenAddress) return { raw: undefined, decimals: 18, formatted: '—', available: false, refetch };
@@ -92,10 +101,10 @@ export const useBridgeTransfer = ({ tokenId, sourceChain, destChain, amountWei, 
     query: { enabled: Boolean(routerAddress) },
   });
 
-  const approveWrite = useWriteContract();
+  const approveWrite = useGasBufferedWrite(source.chainId);
   const approveReceipt = useWaitForTransactionReceipt({ hash: approveWrite.data });
 
-  const transferWrite = useWriteContract();
+  const transferWrite = useGasBufferedWrite(source.chainId);
   const transferReceipt = useWaitForTransactionReceipt({ hash: transferWrite.data });
 
   useEffect(() => {
@@ -108,6 +117,41 @@ export const useBridgeTransfer = ({ tokenId, sourceChain, destChain, amountWei, 
     if (allowance === undefined) return true;
     return (allowance as bigint) < amountWei;
   }, [needsApproval, amountWei, allowance]);
+
+  // --- Delivery tracking: snapshot the recipient's destination balance right
+  // before dispatch, then poll it until it rises by the bridged amount so the
+  // UI can auto-detect arrival without a manual page reload. ---
+  const [preTransferDestBalance, setPreTransferDestBalance] = useState<bigint | undefined>(undefined);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  const dispatchConfirmed = transferReceipt.isSuccess;
+  const destBalance = useChainTokenBalance(destChain, tokenId, recipient, {
+    refetchInterval: dispatchConfirmed && preTransferDestBalance !== undefined ? 4000 : false,
+  });
+
+  const delivered = Boolean(
+    dispatchConfirmed &&
+      preTransferDestBalance !== undefined &&
+      amountWei !== undefined &&
+      destBalance.raw !== undefined &&
+      destBalance.raw >= preTransferDestBalance + amountWei
+  );
+
+  const awaitingDelivery = dispatchConfirmed && preTransferDestBalance !== undefined && !delivered;
+
+  useEffect(() => {
+    if (!awaitingDelivery) return;
+    const start = Date.now();
+    setElapsedSeconds(0);
+    const id = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [awaitingDelivery]);
+
+  /** Message ID from the Mailbox's `DispatchId` event, for a direct Hyperlane Explorer link. */
+  const messageId = useMemo(() => {
+    const log = transferReceipt.data?.logs.find((l) => l.topics[0] === DISPATCH_ID_TOPIC);
+    return log?.topics[1];
+  }, [transferReceipt.data]);
 
   /** Switches the connected wallet to the source chain first if it's on the wrong network, so the write below doesn't silently no-op. */
   const ensureOnSourceChain = async () => {
@@ -125,25 +169,29 @@ export const useBridgeTransfer = ({ tokenId, sourceChain, destChain, amountWei, 
   const approve = async () => {
     if (!routerAddress || !spendTokenAddress || amountWei === undefined) return;
     if (!(await ensureOnSourceChain())) return;
-    approveWrite.writeContract({
+    approveWrite.writeWithGas({
       chainId: source.chainId,
       address: spendTokenAddress,
       abi: erc20Abi,
       functionName: 'approve',
       args: [routerAddress, amountWei],
+      account: address,
     });
   };
 
   const transfer = async () => {
     if (!routerAddress || !recipient || amountWei === undefined || gasQuote === undefined) return;
     if (!(await ensureOnSourceChain())) return;
-    transferWrite.writeContract({
+    // Snapshot the destination balance right before dispatch so delivery can be detected by its rise.
+    setPreTransferDestBalance(destBalance.raw ?? BigInt(0));
+    transferWrite.writeWithGas({
       chainId: source.chainId,
       address: routerAddress,
       abi: tokenRouterAbi,
       functionName: 'transferRemote',
       args: [dest.domainId, addressToBytes32(recipient), amountWei],
       value: gasQuote as bigint,
+      account: address,
     });
   };
 
@@ -157,11 +205,18 @@ export const useBridgeTransfer = ({ tokenId, sourceChain, destChain, amountWei, 
     isTransferring: transferWrite.isPending || transferReceipt.isLoading,
     transferSuccess: transferReceipt.isSuccess,
     transferHash: transferWrite.data,
+    messageId,
+    destBalance,
+    awaitingDelivery,
+    delivered,
+    elapsedSeconds,
     error: switchError ?? approveWrite.error ?? transferWrite.error ?? null,
     reset: () => {
       setSwitchError(null);
       approveWrite.reset();
       transferWrite.reset();
+      setPreTransferDestBalance(undefined);
+      setElapsedSeconds(0);
     },
   };
 };

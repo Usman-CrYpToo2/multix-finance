@@ -9,7 +9,7 @@
 somniatestnet:
   type: collateral
   # MultiX GBP Stablecoin, deployed on Somnia testnet (frontend/constants/addresses.ts -> GBP_STABLE)
-  token: "0x84Bfd04993EE99D4f53ADA9e9F6B7B8A37f797aC"
+  token: "0xD1233bEa81A447aF6DBC5FB6B74EeD92F9397945"
 
 sepolia:
   type: synthetic

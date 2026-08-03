@@ -77,6 +77,15 @@ contract MultixScript is Script {
         oracle.updateEthPrice(1000 * 1e8);
         oracle.updateFxRate(gbpPool, 13e7); // 1.3 USD per GBP
        oracle.updateFxRate(USDPool, 1e8);  // 1.0 USD per USD (baseline)
+
+        // 9. Configure Somnia AI-agent price sources (jsonApiAgentId already defaults
+        // to the real Somnia Testnet "JSON API Request" base agent - see HybridFiatPriceFeed).
+        // USD pool stays on the bot-push baseline above (fixed 1.0, no API needed).
+        oracle.setEthApiSource(
+            "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd", "ethereum.usd"
+        );
+        oracle.setPoolApiSource(gbpPool, "https://api.frankfurter.app/latest?from=GBP&to=USD", "rates.USD");
+
         vm.stopBroadcast();
 
         // Logs

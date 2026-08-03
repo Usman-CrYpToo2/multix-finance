@@ -9,7 +9,7 @@
 somniatestnet:
   type: collateral
   # MultiX USD Stablecoin, deployed on Somnia testnet (frontend/constants/addresses.ts -> USD_Stable)
-  token: "0xEA4351cCDBAEed93847FC8620Ac742f17fA28399"
+  token: "0x74Ac78F74e5cb03975Ef9D7b5A15A3F74Ab9AAa1"
 
 sepolia:
   type: synthetic
