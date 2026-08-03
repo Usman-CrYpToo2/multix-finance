@@ -24,6 +24,7 @@ const ASSET_CONFIG = [
     name: 'British Pound Peg',
     symbol: 'GBP', // Change to GBP if you prefer
     color: 'bg-[#E6007A]',
+    icon: '/icons/tokens/gbp.svg',
     poolAddress: CONTRACT_ADDRESSES.GBP_POOL,
     isCrossChain: true,
   },
@@ -32,8 +33,9 @@ const ASSET_CONFIG = [
     name: 'US Dollar Peg',
     symbol: 'USD',
     color: 'bg-blue-500',
+    icon: '/icons/tokens/usd.svg',
     poolAddress: CONTRACT_ADDRESSES.USD_Pool,
-    isCrossChain: false,
+    isCrossChain: true,
   }
 ];
 
@@ -89,6 +91,7 @@ export default function MarketsPage() {
         name: config.name,
         symbol: config.symbol,
         color: config.color,
+        icon: config.icon,
         totalDeposited: numCollateral.toLocaleString(undefined, { maximumFractionDigits: 4 }),
         depositedUsd: `$${collateralUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         totalMinted: numDebt.toLocaleString(undefined, { maximumFractionDigits: 2 }),
@@ -120,7 +123,7 @@ export default function MarketsPage() {
       <div className="flex items-center gap-3 mb-8">
         <h1 className="text-3xl font-bold text-white">Markets</h1>
         <span className="bg-pink-500/10 text-pink-400 border border-pink-500/20 text-xs font-semibold px-2.5 py-1 rounded-full shadow-[0_0_8px_rgba(230,0,122,0.2)]">
-          Polkadot Hub Testnet
+          Somnia Testnet
         </span>
       </div>
 
@@ -175,8 +178,8 @@ export default function MarketsPage() {
                 <tr key={asset.id} className="hover:bg-white/5 transition-colors group">
                   <td className="px-6 py-5">
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 ${asset.color} rounded-full flex items-center justify-center text-white text-xs font-bold shadow-[0_0_10px_rgba(255,255,255,0.2)]`}>
-                        {asset.symbol.charAt(0)}
+                      <div className="w-8 h-8 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)] overflow-hidden">
+                        <img src={asset.icon} alt={asset.symbol} className="w-full h-full object-cover" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">

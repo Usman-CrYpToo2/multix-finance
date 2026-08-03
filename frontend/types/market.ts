@@ -3,6 +3,7 @@ export type Asset = {
   name: string;
   symbol: string;
   color: string;
+  icon: string;
   totalDeposited: string;
   depositedUsd: string;
   totalMinted: string;

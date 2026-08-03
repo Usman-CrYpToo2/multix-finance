@@ -59,8 +59,8 @@ export const SelectTokenModal = ({ selectedId, balances, onSelect, onClose }: Se
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full ${token.color} flex items-center justify-center text-xs font-bold text-white`}>
-                      {token.symbol[0]}
+                    <div className="w-8 h-8 rounded-full overflow-hidden">
+                      <img src={token.icon} alt={token.symbol} className="w-full h-full object-cover" />
                     </div>
                     <div className="flex flex-col">
                       <span className="text-white font-medium text-sm">{token.symbol}</span>

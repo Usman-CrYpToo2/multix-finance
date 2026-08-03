@@ -143,8 +143,8 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
             <label className="text-sm text-zinc-400 mb-2 block">Amount</label>
             <div className={`border rounded-xl bg-white/5 p-3 flex justify-between items-center transition-all ${isExceedingDebt ? 'border-pink-500/50 bg-pink-500/5' : 'border-white/10 focus-within:border-pink-500/50 focus-within:bg-white/10'}`}>
               <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 cursor-pointer hover:bg-black/60">
-                <div className={`w-5 h-5 rounded-full ${asset.color} flex items-center justify-center text-[10px] font-bold text-white`}>
-                  {asset.symbol.charAt(0)}
+                <div className="w-5 h-5 rounded-full overflow-hidden">
+                  <img src={asset.icon} alt={asset.symbol} className="w-full h-full object-cover" />
                 </div>
                 <span className="text-white font-medium">{asset.symbol}</span>
                 <span className="text-zinc-500 text-xs">▼</span>
@@ -188,8 +188,8 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
               <div className="flex justify-between items-center">
                 <span className="text-zinc-400 text-sm">Remaining Debt:</span>
                 <div className="flex items-center gap-2 text-white font-medium">
-                  <div className={`w-4 h-4 rounded-full ${asset.color} flex items-center justify-center text-[8px] font-bold text-white`}>
-                    {asset.symbol.charAt(0)}
+                  <div className="w-4 h-4 rounded-full overflow-hidden">
+                    <img src={asset.icon} alt={asset.symbol} className="w-full h-full object-cover" />
                   </div>
                   {Math.max(0, userDebt - numRepay).toLocaleString(undefined, { maximumFractionDigits: 4 })}
                 </div>

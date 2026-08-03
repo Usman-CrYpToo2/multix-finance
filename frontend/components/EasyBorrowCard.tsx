@@ -1,6 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronDown } from 'lucide-react';
 import { useVaultData } from '@/hooks/useVaultData';
 
 export default function EasyBorrowCard() {
@@ -13,6 +15,39 @@ export default function EasyBorrowCard() {
     SUPPORTED_ASSETS, selectedAssetId, setSelectedAssetId, activeAsset, borrowAPR,
     existingCollateral, existingDebt, existingCollateralValue, existingDebtValue, error
   } = useVaultData();
+
+  // The asset dropdown is rendered through a portal (see below) since the card's
+  // rounded corners rely on `overflow-hidden` on its ancestors, which would otherwise
+  // clip an absolutely-positioned menu instead of letting it float above the card.
+  const [assetMenuOpen, setAssetMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const assetButtonRef = useRef<HTMLButtonElement>(null);
+  const assetMenuRef = useRef<HTMLDivElement>(null);
+
+  const openAssetMenu = () => {
+    const rect = assetButtonRef.current?.getBoundingClientRect();
+    if (rect) setMenuPos({ top: rect.bottom + 8, left: rect.left });
+    setAssetMenuOpen((v) => !v);
+  };
+
+  useEffect(() => {
+    if (!assetMenuOpen) return;
+    const close = () => setAssetMenuOpen(false);
+    const onClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (assetButtonRef.current?.contains(target)) return;
+      if (assetMenuRef.current?.contains(target)) return;
+      setAssetMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [assetMenuOpen]);
 
   const getProgressColor = (ltv: number) => {
     if (ltv >= MAX_LTV) return 'bg-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.8)]';
@@ -49,7 +84,9 @@ export default function EasyBorrowCard() {
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/10 shadow-inner">
-                  <div className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center text-white text-xs shadow-[0_0_8px_rgba(99,102,241,0.5)]">Ξ</div>
+                  <div className="w-6 h-6 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.5)] overflow-hidden">
+                    <img src="/icons/tokens/weth.png" alt="WETH" className="w-full h-full object-cover" />
+                  </div>
                   <span className="font-semibold text-white">ETH</span>
                 </div>
                 <div className="text-right flex flex-col items-end">
@@ -95,20 +132,47 @@ export default function EasyBorrowCard() {
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 bg-black/40 pl-2 pr-3 py-1.5 rounded-full border border-white/10 shadow-inner hover:border-white/30 transition-colors">
-                  <div className="w-6 h-6 bg-[#E6007A] rounded-full flex items-center justify-center text-white text-xs shadow-[0_0_8px_rgba(230,0,122,0.5)]">$</div>
-                  <select
-                    value={selectedAssetId}
-                    onChange={(e) => setSelectedAssetId(e.target.value as keyof typeof SUPPORTED_ASSETS)}
-                    className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer appearance-none pr-4"
-                    style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23a1a1aa%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right center', backgroundSize: '16px' }}
+                <div className="relative">
+                  <button
+                    ref={assetButtonRef}
+                    type="button"
+                    onClick={openAssetMenu}
+                    className="flex items-center gap-2 bg-black/40 pl-2 pr-3 py-1.5 rounded-full border border-white/10 shadow-inner hover:border-white/30 transition-colors"
                   >
-                    {Object.entries(SUPPORTED_ASSETS).map(([key, asset]) => (
-                      <option key={key} value={key} className="bg-zinc-900 text-white">
-                        {asset.symbol} ({key})
-                      </option>
-                    ))}
-                  </select>
+                    <div className="w-6 h-6 rounded-full shadow-[0_0_8px_rgba(230,0,122,0.5)] overflow-hidden shrink-0">
+                      <img src={activeAsset.icon} alt={activeAsset.symbol} className="w-full h-full object-cover" />
+                    </div>
+                    <span className="text-white font-semibold text-sm">{activeAsset.symbol}</span>
+                    <ChevronDown size={14} className={`text-zinc-500 transition-transform ${assetMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {assetMenuOpen && typeof document !== 'undefined' && createPortal(
+                    <div
+                      ref={assetMenuRef}
+                      style={{ position: 'fixed', top: menuPos.top, left: menuPos.left }}
+                      className="w-44 bg-[#18181b] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 py-1"
+                    >
+                      {Object.entries(SUPPORTED_ASSETS).map(([key, asset]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            setSelectedAssetId(key as keyof typeof SUPPORTED_ASSETS);
+                            setAssetMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
+                            key === selectedAssetId ? 'bg-white/10' : 'hover:bg-white/5'
+                          }`}
+                        >
+                          <div className="w-6 h-6 rounded-full shrink-0 overflow-hidden">
+                            <img src={asset.icon} alt={asset.symbol} className="w-full h-full object-cover" />
+                          </div>
+                          <span className="text-white font-medium text-sm">{asset.symbol}</span>
+                        </button>
+                      ))}
+                    </div>,
+                    document.body
+                  )}
                 </div>
 
                 <div className="text-right flex flex-col items-end">
@@ -250,8 +314,8 @@ export default function EasyBorrowCard() {
         {/* Dynamic Borrow Rate Box */}
         <div className="bg-[#18181b] border border-white/10 rounded-2xl p-6 shadow-xl flex flex-col justify-center h-[180px]">
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-6 h-6 bg-[#E6007A] rounded-full flex items-center justify-center text-white text-xs font-bold shadow-[0_0_8px_rgba(230,0,122,0.5)]">
-              $
+            <div className="w-6 h-6 rounded-full shadow-[0_0_8px_rgba(230,0,122,0.5)] overflow-hidden">
+              <img src={activeAsset.icon} alt={activeAsset.symbol} className="w-full h-full object-cover" />
             </div>
             <span className="text-zinc-300 font-medium text-sm tracking-wide">Borrow Rate</span>
           </div>

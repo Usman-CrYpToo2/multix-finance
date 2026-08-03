@@ -147,8 +147,8 @@ export const WithdrawModal = ({ asset, onClose }: WithdrawModalProps) => {
                         <label className="text-sm text-zinc-400 mb-2 block">Amount</label>
                         <div className={`border rounded-xl bg-white/5 p-3 flex justify-between items-center transition-all ${isExceedingSafe ? 'border-indigo-500/50 bg-indigo-500/5' : 'border-white/10 focus-within:border-indigo-500/50 focus-within:bg-white/10'}`}>
                             <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 cursor-pointer hover:bg-black/60">
-                                <div className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold text-white">
-                                    W
+                                <div className="w-5 h-5 rounded-full overflow-hidden">
+                                    <img src="/icons/tokens/weth.png" alt="WETH" className="w-full h-full object-cover" />
                                 </div>
                                 <span className="text-white font-medium">WETH</span>
                                 <span className="text-zinc-500 text-xs">▼</span>
@@ -190,8 +190,8 @@ export const WithdrawModal = ({ asset, onClose }: WithdrawModalProps) => {
                                 <span className="text-zinc-400 text-sm">Collateral:</span>
                                 <div className="text-right flex flex-col gap-1">
                                     <div className="flex items-center justify-end gap-2 text-white font-medium">
-                                        <div className="w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center text-[8px] font-bold text-white">
-                                            W
+                                        <div className="w-4 h-4 rounded-full overflow-hidden">
+                                            <img src="/icons/tokens/weth.png" alt="WETH" className="w-full h-full object-cover" />
                                         </div>
                                         {userCollateral.toLocaleString(undefined, { maximumFractionDigits: 4 })} WETH
                                     </div>

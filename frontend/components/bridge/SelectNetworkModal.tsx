@@ -69,8 +69,8 @@ export const SelectNetworkModal = ({ title, selectedKey, disabledKey, onSelect, 
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-7 h-7 rounded-full ${chain.color} flex items-center justify-center text-xs font-bold text-white`}>
-                        {chain.letter}
+                      <div className={`w-7 h-7 rounded-full ${chain.color} flex items-center justify-center overflow-hidden`}>
+                        <img src={chain.icon} alt={chain.name} className="w-4.5 h-4.5 object-contain" />
                       </div>
                       <span className="text-white font-medium text-sm">{chain.name}</span>
                     </div>

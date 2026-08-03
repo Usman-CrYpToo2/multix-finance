@@ -11,7 +11,8 @@ import { useOraclePrices } from '@/hooks/useOraclePrices';
 export const SUPPORTED_ASSETS = {
   GBP: {
     id: 'GBP',
-    symbol: 'SPK',
+    symbol: 'GBP',
+    icon: '/icons/tokens/gbp.svg',
     poolAddress: CONTRACT_ADDRESSES.GBP_POOL,
     stableAddress: CONTRACT_ADDRESSES.GBP_STABLE,
   },
@@ -19,6 +20,7 @@ export const SUPPORTED_ASSETS = {
   USD: {
     id: 'USD',
     symbol: 'USD',
+    icon: '/icons/tokens/usd.svg',
     poolAddress: CONTRACT_ADDRESSES.USD_Pool,
     stableAddress: CONTRACT_ADDRESSES.USD_Stable,
   }

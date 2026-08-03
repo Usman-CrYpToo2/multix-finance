@@ -115,8 +115,8 @@ export const BridgeCard = () => {
             className="flex items-center gap-2 bg-white/5 hover:bg-white/10 transition-colors px-3 py-1.5 rounded-lg text-sm mb-3"
           >
             <span className="text-zinc-400">From:</span>
-            <div className={`w-4 h-4 rounded-full ${source.color} flex items-center justify-center text-[9px] font-bold text-white`}>
-              {source.letter}
+            <div className={`w-4 h-4 rounded-full ${source.color} flex items-center justify-center overflow-hidden`}>
+              <img src={source.icon} alt={source.name} className="w-3 h-3 object-contain" />
             </div>
             <span className="text-white font-medium">{source.name}</span>
             <ChevronDown size={14} className="text-zinc-500" />
@@ -142,8 +142,8 @@ export const BridgeCard = () => {
               onClick={() => setActiveModal('token')}
               className="flex items-center gap-2 bg-black/40 hover:bg-black/60 transition-colors px-3 py-2 rounded-full border border-white/5 shrink-0"
             >
-              <div className={`w-5 h-5 rounded-full ${token.color} flex items-center justify-center text-[10px] font-bold text-white`}>
-                {token.symbol[0]}
+              <div className="w-5 h-5 rounded-full overflow-hidden">
+                <img src={token.icon} alt={token.symbol} className="w-full h-full object-cover" />
               </div>
               <span className="text-white font-medium text-sm">{token.symbol}</span>
               <ChevronDown size={14} className="text-zinc-500" />
@@ -186,8 +186,8 @@ export const BridgeCard = () => {
             className="flex items-center gap-2 bg-white/5 hover:bg-white/10 transition-colors px-3 py-1.5 rounded-lg text-sm mb-3"
           >
             <span className="text-zinc-400">To:</span>
-            <div className={`w-4 h-4 rounded-full ${dest.color} flex items-center justify-center text-[9px] font-bold text-white`}>
-              {dest.letter}
+            <div className={`w-4 h-4 rounded-full ${dest.color} flex items-center justify-center overflow-hidden`}>
+              <img src={dest.icon} alt={dest.name} className="w-3 h-3 object-contain" />
             </div>
             <span className="text-white font-medium">{dest.name}</span>
             <ChevronDown size={14} className="text-zinc-500" />
@@ -196,8 +196,8 @@ export const BridgeCard = () => {
           <div className="flex justify-between items-center gap-3">
             <span className="text-3xl font-semibold text-zinc-600">{amount || '-'}</span>
             <div className="flex items-center gap-2 bg-black/20 px-3 py-2 rounded-full border border-white/5 shrink-0 opacity-70">
-              <div className={`w-5 h-5 rounded-full ${token.color} flex items-center justify-center text-[10px] font-bold text-white`}>
-                {token.symbol[0]}
+              <div className="w-5 h-5 rounded-full overflow-hidden">
+                <img src={token.icon} alt={token.symbol} className="w-full h-full object-cover" />
               </div>
               <span className="text-zinc-300 font-medium text-sm">{token.symbol}</span>
             </div>

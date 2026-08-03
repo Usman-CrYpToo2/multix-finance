@@ -16,11 +16,12 @@ export interface BridgeChain {
   nativeSymbol: string;
   letter: string;
   color: string; // tailwind bg-* class for the chain badge
+  icon: string; // path under /public
 }
 
 export const BRIDGE_CHAINS: BridgeChain[] = [
-  { key: 'somnia', chainId: 50312, domainId: 50312, name: 'Somnia Testnet', nativeSymbol: 'STT', letter: 'S', color: 'bg-violet-500' },
-  { key: 'sepolia', chainId: 11155111, domainId: 11155111, name: 'Ethereum Sepolia', nativeSymbol: 'ETH', letter: 'E', color: 'bg-indigo-500' },
+  { key: 'somnia', chainId: 50312, domainId: 50312, name: 'Somnia Testnet', nativeSymbol: 'STT', letter: 'S', color: 'bg-violet-500', icon: '/icons/chains/somnia.svg' },
+  { key: 'sepolia', chainId: 11155111, domainId: 11155111, name: 'Ethereum Sepolia', nativeSymbol: 'ETH', letter: 'E', color: 'bg-indigo-500', icon: '/icons/chains/sepolia.svg' },
 ];
 
 export type BridgeTokenId = 'GBP' | 'USD';
@@ -30,6 +31,7 @@ export interface BridgeToken {
   symbol: string;
   name: string;
   color: string; // tailwind bg-* class for the token badge
+  icon: string; // path under /public
   /** ERC20 the user actually holds/sees a balance of on each chain. */
   addresses: Partial<Record<ChainKey, `0x${string}`>>;
   /**
@@ -47,6 +49,7 @@ export const BRIDGE_TOKENS: BridgeToken[] = [
     symbol: 'GBP',
     name: 'MultiX GBP Stablecoin',
     color: 'bg-pink-500',
+    icon: '/icons/tokens/gbp.svg',
     addresses: {
       somnia: CONTRACT_ADDRESSES.GBP_STABLE as `0x${string}`,
       sepolia: '0x21fd42f82c14Ec1E2feEfe111C40C3bcc5690e16',
@@ -61,6 +64,7 @@ export const BRIDGE_TOKENS: BridgeToken[] = [
     symbol: 'USD',
     name: 'MultiX USD Stablecoin',
     color: 'bg-emerald-500',
+    icon: '/icons/tokens/usd.svg',
     addresses: {
       somnia: CONTRACT_ADDRESSES.USD_Stable as `0x${string}`,
       sepolia: '0x71fEe8094606B633a02e17Ed5e27C3A770f00e8b',
