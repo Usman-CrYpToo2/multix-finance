@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
+import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
 import { formatUnits, keccak256, pad, stringToHex, type Address } from 'viem';
 import {
   BridgeTokenId,
@@ -8,6 +8,7 @@ import {
   getToken,
   isCollateralSide,
 } from '@/constants/bridgeConfig';
+import { useGasBufferedWrite } from '@/hooks/useGasBufferedWrite';
 
 /** topic0 for the Mailbox's `DispatchId(bytes32 indexed messageId)` event - same for every Hyperlane Mailbox. */
 const DISPATCH_ID_TOPIC = keccak256(stringToHex('DispatchId(bytes32)'));
@@ -100,10 +101,10 @@ export const useBridgeTransfer = ({ tokenId, sourceChain, destChain, amountWei, 
     query: { enabled: Boolean(routerAddress) },
   });
 
-  const approveWrite = useWriteContract();
+  const approveWrite = useGasBufferedWrite(source.chainId);
   const approveReceipt = useWaitForTransactionReceipt({ hash: approveWrite.data });
 
-  const transferWrite = useWriteContract();
+  const transferWrite = useGasBufferedWrite(source.chainId);
   const transferReceipt = useWaitForTransactionReceipt({ hash: transferWrite.data });
 
   useEffect(() => {
@@ -168,12 +169,13 @@ export const useBridgeTransfer = ({ tokenId, sourceChain, destChain, amountWei, 
   const approve = async () => {
     if (!routerAddress || !spendTokenAddress || amountWei === undefined) return;
     if (!(await ensureOnSourceChain())) return;
-    approveWrite.writeContract({
+    approveWrite.writeWithGas({
       chainId: source.chainId,
       address: spendTokenAddress,
       abi: erc20Abi,
       functionName: 'approve',
       args: [routerAddress, amountWei],
+      account: address,
     });
   };
 
@@ -182,13 +184,14 @@ export const useBridgeTransfer = ({ tokenId, sourceChain, destChain, amountWei, 
     if (!(await ensureOnSourceChain())) return;
     // Snapshot the destination balance right before dispatch so delivery can be detected by its rise.
     setPreTransferDestBalance(destBalance.raw ?? BigInt(0));
-    transferWrite.writeContract({
+    transferWrite.writeWithGas({
       chainId: source.chainId,
       address: routerAddress,
       abi: tokenRouterAbi,
       functionName: 'transferRemote',
       args: [dest.domainId, addressToBytes32(recipient), amountWei],
       value: gasQuote as bigint,
+      account: address,
     });
   };
 

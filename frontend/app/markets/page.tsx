@@ -8,10 +8,9 @@ import { SOMNIA_CHAIN_ID } from '@/constants/chain';
 import { Asset } from '@/types/market';
 import { WithdrawModal } from '@/components/modals/WithdrawModal';
 import { RepayModal } from '@/components/modals/RepayModal';
+import { useOraclePrices } from '@/hooks/useOraclePrices';
 
 // --- Configuration & ABIs ---
-const COLLATERAL_PRICE = 1000; // Still waiting for that Oracle function!
-
 const cdpAbi = [
   { type: 'function', name: 'ltvConfig', stateMutability: 'view', inputs: [], outputs: [{ name: 'safeLtvBp', type: 'uint16' }, { name: 'liquidationLtvBp', type: 'uint16' }, { name: 'liquidationPenaltyBp', type: 'uint16' }] },
   { type: 'function', name: 'getTotalDebt', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
@@ -26,7 +25,6 @@ const ASSET_CONFIG = [
     symbol: 'GBP', // Change to GBP if you prefer
     color: 'bg-[#E6007A]',
     poolAddress: CONTRACT_ADDRESSES.GBP_POOL,
-    price: 1.30,
     isCrossChain: true,
   },
   {
@@ -35,7 +33,6 @@ const ASSET_CONFIG = [
     symbol: 'USD',
     color: 'bg-blue-500',
     poolAddress: CONTRACT_ADDRESSES.USD_Pool,
-    price: 1.0,
     isCrossChain: false,
   }
 ];
@@ -53,11 +50,13 @@ export default function MarketsPage() {
     { chainId: SOMNIA_CHAIN_ID, address: asset.poolAddress as `0x${string}`, abi: cdpAbi, functionName: 'ltvConfig' }
   ]);
 
-  const { data: contractData } = useReadContracts({ 
+  const { data: contractData } = useReadContracts({
     contracts,
     // Refetch every block to keep the UI perfectly live
-    query: { refetchInterval: 3000 } 
+    query: { refetchInterval: 3000 }
   });
+
+  const { ethUsdPrice: COLLATERAL_PRICE, gbpUsdPrice, usdUsdPrice } = useOraclePrices();
 
   // --- Process Data ---
   const { liveAssets, totalVlUsd, totalMintedUsd } = useMemo(() => {
@@ -65,11 +64,11 @@ export default function MarketsPage() {
     let mintedSum = 0;
     const mappedAssets: Asset[] = [];
 
-    
+
     for (let index = 0; index < ASSET_CONFIG.length; index++) {
       const config = ASSET_CONFIG[index];
       const baseIndex = index * 3;
-      
+
       const rawCollateral = contractData?.[baseIndex]?.result as bigint | undefined;
       const rawDebt = contractData?.[baseIndex + 1]?.result as bigint | undefined;
       const rawLtv = contractData?.[baseIndex + 2]?.result as readonly [number, number, number] | undefined;
@@ -77,8 +76,9 @@ export default function MarketsPage() {
       const numCollateral = rawCollateral ? Number(formatEther(rawCollateral)) : 0;
       const numDebt = rawDebt ? Number(formatEther(rawDebt)) : 0;
 
+      const fiatPrice = config.id === 'usd' ? usdUsdPrice : gbpUsdPrice;
       const collateralUsd = numCollateral * COLLATERAL_PRICE;
-      const debtUsd = numDebt * config.price;
+      const debtUsd = numDebt * fiatPrice;
 
       // These mutations are now 100% safe because they are not inside a callback
       tvlSum += collateralUsd;
@@ -103,7 +103,7 @@ export default function MarketsPage() {
     }
 
     return { liveAssets: mappedAssets, totalVlUsd: tvlSum, totalMintedUsd: mintedSum };
-  }, [contractData]);
+  }, [contractData, COLLATERAL_PRICE, gbpUsdPrice, usdUsdPrice]);
 
   const openModal = (type: 'withdraw' | 'repay', asset: Asset) => {
     setSelectedAsset(asset);

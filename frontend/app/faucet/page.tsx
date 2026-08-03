@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { Link2 } from 'lucide-react';
-import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useWaitForTransactionReceipt } from 'wagmi';
 import { parseEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '@/constants/addresses';
 import { SOMNIA_CHAIN_ID } from '@/constants/chain';
 import { useEnsureChain } from '@/hooks/useEnsureChain';
+import { useGasBufferedWrite } from '@/hooks/useGasBufferedWrite';
 
 // --- Minimal ABI just for the mint function ---
 const wethAbi = [
@@ -24,7 +25,8 @@ export default function FaucetPage() {
     const [network, setNetwork] = useState('testnet');
 
     // --Hooks ---
-    const { writeContract, data: hash, isPending, reset, error: writeError } = useWriteContract();
+    const { address } = useAccount();
+    const { writeWithGas, data: hash, isPending, reset, error: writeError } = useGasBufferedWrite(SOMNIA_CHAIN_ID);
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
     const { ensure: ensureOnSomnia, switchError } = useEnsureChain(SOMNIA_CHAIN_ID);
 
@@ -44,13 +46,13 @@ export default function FaucetPage() {
     const handleMint = async () => {
         if (!walletAddress) return;
         if (!(await ensureOnSomnia())) return;
-        writeContract({
+        writeWithGas({
             chainId: SOMNIA_CHAIN_ID,
             address: CONTRACT_ADDRESSES.WETH,
             abi: wethAbi,
             functionName: 'mint',
-
-            args: [walletAddress as `0x${string}`, parseEther('10')]
+            args: [walletAddress as `0x${string}`, parseEther('10')],
+            account: address,
         });
     };
 

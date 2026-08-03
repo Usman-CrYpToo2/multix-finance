@@ -110,10 +110,19 @@ the Somnia network to do it and waits for the callback.
 oracle.setJsonApiAgentId(<real JSON API Request agent id>);
 oracle.setPoolApiSource(
     gbpPoolAddress,
-    "https://api.exchangerate.host/latest?base=USD",
-    "rates.GBP"
+    "https://api.frankfurter.app/latest?from=GBP&to=USD",
+    "rates.USD"
 );
 ```
+
+**Direction matters here.** The contract's `poolFxRates[pool]` convention is
+"USD value of 1 unit of the pool's fiat currency" (e.g. `1.34e8` = 1 GBP is worth
+1.34 USD) — the same convention the bot-push path already used
+(`updateFxRate(gbpPool, 134210000)`). Frankfurter's `from=X&to=Y` returns *Y per
+1 X*, so it must be called as `from=GBP&to=USD` (→ `rates.USD` = USD per GBP), not
+`from=USD&to=GBP` (→ `rates.GBP` = GBP per USD, the inverse). Getting this backwards
+doesn't error — it silently writes a valid-looking but wrong number, so the
+direction has to be checked by hand for whatever API is configured per pool.
 
 `setJsonApiAgentId` points at the correct built-in agent on whichever Somnia Agents
 deployment `somniaAgents` currently points to. `setPoolApiSource` tells the contract
@@ -152,9 +161,9 @@ was just the *ask*.
 
 **Step 2 — off-chain (not this contract, not this repo):** Somnia's network picks a
 subcommittee, each validator independently fetches
-`https://api.exchangerate.host/latest?base=USD`, extracts `rates.GBP`, and submits
-their result to the platform. Once enough validators agree, the platform finalizes
-the request and calls back.
+`https://api.frankfurter.app/latest?from=GBP&to=USD`, extracts `rates.USD`, and
+submits their result to the platform. Once enough validators agree, the platform
+finalizes the request and calls back.
 
 **Step 3 — callback:**
 
@@ -275,10 +284,12 @@ Everything the AI path needs is configured automatically on deploy:
    selector: ethereum.usd
    ```
 3. **`setPoolApiSource(gbpPool, ...)`** — same script step, pointing at Frankfurter
-   (free, keyless, ECB-backed FX rates):
+   (free, keyless, ECB-backed FX rates). Note the direction: `from=GBP&to=USD` to
+   get USD-per-GBP, matching `poolFxRates`' convention (see the callout in §4) —
+   `from=USD&to=GBP` would silently write the inverted rate:
    ```
-   url:      https://api.frankfurter.app/latest?from=USD&to=GBP
-   selector: rates.GBP
+   url:      https://api.frankfurter.app/latest?from=GBP&to=USD
+   selector: rates.USD
    ```
 4. **USD pool** is intentionally left off the AI path — it's a fixed 1.0 USD/USD
    baseline, so it just stays on the bot-push value set once via

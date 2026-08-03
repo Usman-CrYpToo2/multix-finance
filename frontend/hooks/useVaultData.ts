@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useConnection, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useConnection, useReadContract, useWaitForTransactionReceipt } from 'wagmi';
 import { erc20Abi, parseEther, formatEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '@/constants/addresses';
 import { SOMNIA_CHAIN_ID } from '@/constants/chain';
 import { useEnsureChain } from '@/hooks/useEnsureChain';
+import { useGasBufferedWrite } from '@/hooks/useGasBufferedWrite';
+import { useOraclePrices } from '@/hooks/useOraclePrices';
 
 // --- Constants & ABIs ---
 export const SUPPORTED_ASSETS = {
@@ -12,7 +14,6 @@ export const SUPPORTED_ASSETS = {
     symbol: 'SPK',
     poolAddress: CONTRACT_ADDRESSES.GBP_POOL,
     stableAddress: CONTRACT_ADDRESSES.GBP_STABLE,
-    price: 1.30, // We will make this dynamic from Oracle soon
   },
 
   USD: {
@@ -20,13 +21,10 @@ export const SUPPORTED_ASSETS = {
     symbol: 'USD',
     poolAddress: CONTRACT_ADDRESSES.USD_Pool,
     stableAddress: CONTRACT_ADDRESSES.USD_Stable,
-    price: 1.0,
   }
 } as const;
 
 type AssetKey = keyof typeof SUPPORTED_ASSETS;
-
-const COLLATERAL_PRICE = 1000;
 
 const routerAbi = [
   { type: 'function', name: 'depositCollateral', stateMutability: 'nonpayable', inputs: [{ name: 'stableCoin', type: 'address' }, { name: 'receiver', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [] },
@@ -50,7 +48,11 @@ export function useVaultData() {
   const [autoRebalance, setAutoRebalance] = useState(false);
   const [txType, setTxType] = useState<'none' | 'approve' | 'deposit' | 'borrow'>('none');
 
-  const activeAsset = SUPPORTED_ASSETS[selectedAssetId];
+  const { ethUsdPrice: COLLATERAL_PRICE, gbpUsdPrice, usdUsdPrice } = useOraclePrices();
+  const activeAsset = {
+    ...SUPPORTED_ASSETS[selectedAssetId],
+    price: selectedAssetId === 'GBP' ? gbpUsdPrice : usdUsdPrice,
+  };
 
   // --- Blockchain Reads ---
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
@@ -78,7 +80,7 @@ export function useVaultData() {
   });
 
   // --- Write Contracts & Wait ---
-  const { data: hash, writeContract, isPending, error: writeError } = useWriteContract();
+  const { data: hash, writeWithGas, isPending, error: writeError } = useGasBufferedWrite(SOMNIA_CHAIN_ID);
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
   const { ensure: ensureOnSomnia, switchError } = useEnsureChain(SOMNIA_CHAIN_ID);
 
@@ -172,7 +174,7 @@ export function useVaultData() {
           action: async () => {
             if (!(await ensureOnSomnia())) return;
             setTxType('approve');
-            writeContract({ chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.WETH, abi: erc20Abi, functionName: 'approve', args: [CONTRACT_ADDRESSES.ROUTER, parsedDeposit] });
+            writeWithGas({ chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.WETH, abi: erc20Abi, functionName: 'approve', args: [CONTRACT_ADDRESSES.ROUTER, parsedDeposit], account: address });
           }
         };
       }
@@ -182,7 +184,7 @@ export function useVaultData() {
         action: async () => {
           if (!(await ensureOnSomnia())) return;
           setTxType('deposit');
-          writeContract({ chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ROUTER, abi: routerAbi, functionName: 'depositCollateral', args: [activeAsset.stableAddress, address!, parsedDeposit] });
+          writeWithGas({ chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ROUTER, abi: routerAbi, functionName: 'depositCollateral', args: [activeAsset.stableAddress, address!, parsedDeposit], account: address });
         }
       };
     }
@@ -193,7 +195,7 @@ export function useVaultData() {
       action: async () => {
         if (!(await ensureOnSomnia())) return;
         setTxType('borrow');
-        writeContract({ chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ROUTER, abi: routerAbi, functionName: 'borrowFiat', args: [activeAsset.stableAddress, parsedBorrow] });
+        writeWithGas({ chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ROUTER, abi: routerAbi, functionName: 'borrowFiat', args: [activeAsset.stableAddress, parsedBorrow], account: address });
       }
     };
   };

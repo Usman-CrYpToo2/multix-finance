@@ -84,7 +84,7 @@ contract MultixScript is Script {
         oracle.setEthApiSource(
             "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd", "ethereum.usd"
         );
-        oracle.setPoolApiSource(gbpPool, "https://api.frankfurter.app/latest?from=USD&to=GBP", "rates.GBP");
+        oracle.setPoolApiSource(gbpPool, "https://api.frankfurter.app/latest?from=GBP&to=USD", "rates.USD");
 
         vm.stopBroadcast();
 
