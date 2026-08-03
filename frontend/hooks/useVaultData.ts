@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useConnection, useReadContract, useWaitForTransactionReceipt } from 'wagmi';
 import { erc20Abi, parseEther, formatEther } from 'viem';
 import { CONTRACT_ADDRESSES } from '@/constants/addresses';
@@ -42,9 +43,14 @@ const cdpAbi = [
 
 export function useVaultData() {
   const { address, isConnected } = useConnection();
+  const searchParams = useSearchParams();
 
   // --- UI State ---
-  const [selectedAssetId, setSelectedAssetId] = useState<AssetKey>('GBP');
+  // Lets the Markets page deep-link straight into a preselected asset, e.g. /borrow?asset=USD.
+  const [selectedAssetId, setSelectedAssetId] = useState<AssetKey>(() => {
+    const requested = searchParams.get('asset')?.toUpperCase();
+    return requested && requested in SUPPORTED_ASSETS ? (requested as AssetKey) : 'GBP';
+  });
   const [depositAmount, setDepositAmount] = useState('');
   const [borrowAmount, setBorrowAmount] = useState('');
   const [autoRebalance, setAutoRebalance] = useState(false);

@@ -128,39 +128,39 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
       
       {/* Modal Content */}
-      <div className="relative w-full max-w-md bg-[#131316] border border-white/10 rounded-2xl shadow-2xl overflow-hidden font-sans flex flex-col">
+      <div className="relative w-full max-w-md max-h-[90dvh] bg-[#131316] border border-white/10 rounded-2xl shadow-2xl overflow-hidden font-sans flex flex-col">
         {/* Header */}
-        <div className="flex justify-between items-center p-5 border-b border-white/5">
+        <div className="flex justify-between items-center p-5 border-b border-white/5 shrink-0">
           <h3 className="text-xl font-semibold text-white">Repay {asset.symbol}</h3>
           <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors">
             <X size={20} />
           </button>
         </div>
 
-        <div className="p-5 flex flex-col gap-6">
+        <div className="p-5 flex flex-col gap-6 overflow-y-auto">
           {/* Amount Section */}
           <div>
             <label className="text-sm text-zinc-400 mb-2 block">Amount</label>
-            <div className={`border rounded-xl bg-white/5 p-3 flex justify-between items-center transition-all ${isExceedingDebt ? 'border-pink-500/50 bg-pink-500/5' : 'border-white/10 focus-within:border-pink-500/50 focus-within:bg-white/10'}`}>
-              <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 cursor-pointer hover:bg-black/60">
+            <div className={`border rounded-xl bg-white/5 p-3 flex justify-between items-center gap-2 transition-all ${isExceedingDebt ? 'border-pink-500/50 bg-pink-500/5' : 'border-white/10 focus-within:border-pink-500/50 focus-within:bg-white/10'}`}>
+              <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 cursor-pointer hover:bg-black/60 shrink-0">
                 <div className="w-5 h-5 rounded-full overflow-hidden">
                   <img src={asset.icon} alt={asset.symbol} className="w-full h-full object-cover" />
                 </div>
                 <span className="text-white font-medium">{asset.symbol}</span>
                 <span className="text-zinc-500 text-xs">▼</span>
               </div>
-              
-              <div className="text-right flex flex-col items-end">
-                <input 
-                  type="text" 
-                  placeholder="0.00" 
+
+              <div className="text-right flex flex-col items-end flex-1 min-w-0">
+                <input
+                  type="text"
+                  placeholder="0.00"
                   value={amount}
                   onChange={(e) => {
                     const val = e.target.value;
                     // Only allow numbers and decimals
                     if (val === '' || /^\d*\.?\d*$/.test(val)) setAmount(val);
                   }}
-                  className={`w-full text-right bg-transparent text-xl font-bold focus:outline-none placeholder:text-zinc-600 ${isExceedingDebt || isExceedingBalance ? 'text-pink-500' : 'text-white'}`}
+                  className={`w-full min-w-0 text-right bg-transparent text-xl font-bold focus:outline-none placeholder:text-zinc-600 ${isExceedingDebt || isExceedingBalance ? 'text-pink-500' : 'text-white'}`}
                 />
                 <div className="text-xs text-zinc-500 mt-1 flex gap-2">
                   <span>${(numRepay * activePrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -200,23 +200,23 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
           {/* Actions - Converted to 1 Step */}
           <div>
             <div className="border border-white/5 rounded-xl p-2 bg-black/20 flex flex-col gap-2">
-              <div className="flex items-center justify-between p-2">
-                <div className="flex items-center gap-3">
-                  <div className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold border ${isSuccess ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-white/10 text-zinc-400 border-white/5'}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-6 h-6 shrink-0 rounded flex items-center justify-center text-xs font-bold border ${isSuccess ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-white/10 text-zinc-400 border-white/5'}`}>
                     {isSuccess ? <ShieldCheck size={14} /> : '1'}
                   </div>
-                  <ArrowUpToLine size={16} className={`transform rotate-180 ${isSuccess ? 'text-emerald-400' : 'text-zinc-400'}`} />
-                  <span className={`${isSuccess ? 'text-emerald-400' : 'text-white'} font-medium text-sm`}>
+                  <ArrowUpToLine size={16} className={`shrink-0 transform rotate-180 ${isSuccess ? 'text-emerald-400' : 'text-zinc-400'}`} />
+                  <span className={`${isSuccess ? 'text-emerald-400' : 'text-white'} font-medium text-sm truncate`}>
                     {isSuccess ? 'Repayment Confirmed' : `Repay with ${asset.symbol}`}
                   </span>
                 </div>
-                
-                <button 
+
+                <button
                   onClick={handleRepay}
                   disabled={buttonDisabled}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    isSuccess 
-                      ? 'bg-emerald-500/20 text-emerald-400 cursor-default' 
+                  className={`w-full sm:w-auto shrink-0 px-4 py-2.5 sm:py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    isSuccess
+                      ? 'bg-emerald-500/20 text-emerald-400 cursor-default'
                       : 'bg-[#E6007A] hover:bg-pink-600 disabled:bg-white/5 disabled:text-zinc-500 disabled:cursor-not-allowed text-white'
                   }`}
                 >

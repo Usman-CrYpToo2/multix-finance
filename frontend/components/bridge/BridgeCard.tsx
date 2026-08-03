@@ -112,14 +112,14 @@ export const BridgeCard = () => {
         <div className="bg-black/20 border border-white/10 rounded-2xl p-4 relative">
           <button
             onClick={() => setActiveModal('source')}
-            className="flex items-center gap-2 bg-white/5 hover:bg-white/10 transition-colors px-3 py-1.5 rounded-lg text-sm mb-3"
+            className="flex items-center gap-2 max-w-full bg-white/5 hover:bg-white/10 transition-colors px-3 py-1.5 rounded-lg text-sm mb-3"
           >
-            <span className="text-zinc-400">From:</span>
-            <div className={`w-4 h-4 rounded-full ${source.color} flex items-center justify-center overflow-hidden`}>
+            <span className="text-zinc-400 shrink-0">From:</span>
+            <div className={`w-4 h-4 rounded-full ${source.color} flex items-center justify-center overflow-hidden shrink-0`}>
               <img src={source.icon} alt={source.name} className="w-3 h-3 object-contain" />
             </div>
-            <span className="text-white font-medium">{source.name}</span>
-            <ChevronDown size={14} className="text-zinc-500" />
+            <span className="text-white font-medium truncate">{source.name}</span>
+            <ChevronDown size={14} className="text-zinc-500 shrink-0" />
           </button>
 
           <div className="flex justify-between items-center gap-3">
@@ -134,7 +134,7 @@ export const BridgeCard = () => {
                   bridge.reset();
                 }
               }}
-              className={`w-full min-w-0 bg-transparent text-3xl font-semibold focus:outline-none placeholder:text-zinc-700 ${
+              className={`w-full min-w-0 bg-transparent text-2xl sm:text-3xl font-semibold focus:outline-none placeholder:text-zinc-700 ${
                 exceedsBalance ? 'text-pink-400' : 'text-white'
               }`}
             />
@@ -183,18 +183,18 @@ export const BridgeCard = () => {
         <div className="bg-black/20 border border-white/10 rounded-2xl p-4 mt-3">
           <button
             onClick={() => setActiveModal('destination')}
-            className="flex items-center gap-2 bg-white/5 hover:bg-white/10 transition-colors px-3 py-1.5 rounded-lg text-sm mb-3"
+            className="flex items-center gap-2 max-w-full bg-white/5 hover:bg-white/10 transition-colors px-3 py-1.5 rounded-lg text-sm mb-3"
           >
-            <span className="text-zinc-400">To:</span>
-            <div className={`w-4 h-4 rounded-full ${dest.color} flex items-center justify-center overflow-hidden`}>
+            <span className="text-zinc-400 shrink-0">To:</span>
+            <div className={`w-4 h-4 rounded-full ${dest.color} flex items-center justify-center overflow-hidden shrink-0`}>
               <img src={dest.icon} alt={dest.name} className="w-3 h-3 object-contain" />
             </div>
-            <span className="text-white font-medium">{dest.name}</span>
-            <ChevronDown size={14} className="text-zinc-500" />
+            <span className="text-white font-medium truncate">{dest.name}</span>
+            <ChevronDown size={14} className="text-zinc-500 shrink-0" />
           </button>
 
           <div className="flex justify-between items-center gap-3">
-            <span className="text-3xl font-semibold text-zinc-600">{amount || '-'}</span>
+            <span className="text-2xl sm:text-3xl font-semibold text-zinc-600 truncate min-w-0">{amount || '-'}</span>
             <div className="flex items-center gap-2 bg-black/20 px-3 py-2 rounded-full border border-white/5 shrink-0 opacity-70">
               <div className="w-5 h-5 rounded-full overflow-hidden">
                 <img src={token.icon} alt={token.symbol} className="w-full h-full object-cover" />
@@ -230,7 +230,7 @@ export const BridgeCard = () => {
             placeholder="Destination address (0x...)"
             value={customAddress}
             onChange={(e) => setCustomAddress(e.target.value)}
-            className={`w-full mt-2 bg-black/20 border rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none transition-colors ${
+            className={`w-full mt-2 bg-black/20 border rounded-xl px-4 py-3 text-base sm:text-sm text-white placeholder:text-zinc-600 focus:outline-none transition-colors ${
               customAddress && !customAddressValid ? 'border-pink-500/50' : 'border-white/10 focus:border-indigo-500/50'
             }`}
           />

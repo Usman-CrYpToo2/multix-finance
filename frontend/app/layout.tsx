@@ -1,12 +1,31 @@
+import type { Viewport } from 'next'
+import { Inter } from 'next/font/google'
 import { Navbar } from '@/components/Navbar'
 import './globals.css'
 import { Web3Provider } from '@/components/Web3Provider'
 
+// The app previously fell through to Arial/Helvetica (globals.css referenced a
+// --font-geist-sans variable that was never actually loaded).
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-sans-loaded',
+  display: 'swap',
+})
+
+// `viewportFit: 'cover'` lets the fixed background reach behind notches/home
+// indicators; maximumScale is left unset so pinch-zoom stays available.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="bg-gray-50 min-h-screen">
+    <html lang="en" className={inter.variable}>
+      {/* Matches the fixed backdrop below - the backdrop only covers the viewport,
+          so a light body colour flashes through on mobile overscroll/rubber-band. */}
+      <body className="bg-[#09090b] min-h-screen antialiased">
         <Web3Provider>
           <div className="fixed inset-0 -z-10 pointer-events-none bg-[#09090b] overflow-hidden">
             {/* Deep Space Background with Pulsing Orbs */}

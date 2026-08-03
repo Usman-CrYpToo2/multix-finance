@@ -24,9 +24,15 @@ export default function EasyBorrowCard() {
   const assetButtonRef = useRef<HTMLButtonElement>(null);
   const assetMenuRef = useRef<HTMLDivElement>(null);
 
+  const ASSET_MENU_WIDTH = 176; // matches the portal's w-44
+
   const openAssetMenu = () => {
     const rect = assetButtonRef.current?.getBoundingClientRect();
-    if (rect) setMenuPos({ top: rect.bottom + 8, left: rect.left });
+    if (rect) {
+      // Clamp so the menu never runs off the right edge on narrow phone screens.
+      const left = Math.min(rect.left, window.innerWidth - ASSET_MENU_WIDTH - 8);
+      setMenuPos({ top: rect.bottom + 8, left: Math.max(8, left) });
+    }
     setAssetMenuOpen((v) => !v);
   };
 
@@ -65,7 +71,7 @@ export default function EasyBorrowCard() {
   return (
     <div className="max-w-6xl mx-auto font-sans grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-      <div className="lg:col-span-2 p-6 md:p-8 bg-black/20 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/10 relative overflow-hidden group">
+      <div className="lg:col-span-2 p-4 sm:p-6 md:p-8 bg-black/20 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/10 relative overflow-hidden group">
         <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
 
         <div className="flex flex-col md:flex-row gap-4 mb-8 relative z-10">
@@ -82,20 +88,20 @@ export default function EasyBorrowCard() {
                   <button onClick={handleMaxClick} className="text-pink-400 hover:text-pink-300 font-medium transition-colors">Max</button>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/10 shadow-inner">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/10 shadow-inner shrink-0">
                   <div className="w-6 h-6 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.5)] overflow-hidden">
                     <img src="/icons/tokens/weth.png" alt="WETH" className="w-full h-full object-cover" />
                   </div>
                   <span className="font-semibold text-white">ETH</span>
                 </div>
-                <div className="text-right flex flex-col items-end">
+                <div className="text-right flex flex-col items-end flex-1 min-w-0">
                   <input
                     type="text"
                     value={depositAmount}
                     onChange={handleDepositChange}
                     placeholder="0.00"
-                    className={`w-32 text-right bg-transparent text-3xl font-bold focus:outline-none placeholder:text-zinc-600 transition-colors ${isExceedingBalance ? 'text-pink-500' : 'text-white'}`}
+                    className={`w-full min-w-0 text-right bg-transparent text-2xl sm:text-3xl font-bold focus:outline-none placeholder:text-zinc-600 transition-colors ${isExceedingBalance ? 'text-pink-500' : 'text-white'}`}
                   />
                   <div className="text-sm mt-1 flex flex-col items-end">
                     <span className="text-zinc-500">${totalCollateralValue.toLocaleString()}</span>
@@ -131,8 +137,8 @@ export default function EasyBorrowCard() {
                   <button onClick={handleMaxBorrowClick} className="text-[#E6007A] hover:text-pink-400 font-medium transition-colors">Max</button>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
-                <div className="relative">
+              <div className="flex items-center justify-between gap-2">
+                <div className="relative shrink-0">
                   <button
                     ref={assetButtonRef}
                     type="button"
@@ -175,13 +181,13 @@ export default function EasyBorrowCard() {
                   )}
                 </div>
 
-                <div className="text-right flex flex-col items-end">
+                <div className="text-right flex flex-col items-end flex-1 min-w-0">
                   <input
                     type="text"
                     value={borrowAmount}
                     onChange={handleBorrowChange}
                     placeholder="0.00"
-                    className="w-32 text-right bg-transparent text-3xl font-bold text-white focus:outline-none placeholder:text-zinc-600"
+                    className="w-full min-w-0 text-right bg-transparent text-2xl sm:text-3xl font-bold text-white focus:outline-none placeholder:text-zinc-600"
                   />
                   <div className="text-sm text-zinc-500 mt-1">${totalDebtValue.toLocaleString()}</div>
                 </div>
@@ -204,17 +210,32 @@ export default function EasyBorrowCard() {
         </div>
 
         {/* LTV Visualizer Section */}
-        <div className="border border-white/10 rounded-2xl p-6 bg-black/40 shadow-inner mb-8 relative overflow-hidden z-10">
-          <div className="flex justify-between items-end mb-6">
-            <div>
-              <h3 className="font-semibold text-white text-lg">Loan to Value (LTV)</h3>
-              <p className="text-xs text-zinc-400 mt-1">Ratio of the collateral value to the borrowed value</p>
-            </div>
-            <div className="text-right">
-              <div className={`text-3xl font-bold ${currentLTV >= MAX_LTV ? 'text-pink-500 drop-shadow-[0_0_8px_rgba(236,72,153,0.5)]' : 'text-white'}`}>
-                {currentLTV.toFixed(2)}%
+        <div className="border border-white/10 rounded-2xl p-4 sm:p-6 bg-black/40 shadow-inner mb-8 relative overflow-hidden z-10">
+          <div className="mb-6">
+            {/* Mobile: title and value share a row, description wraps underneath. */}
+            <div className="sm:hidden">
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 className="font-semibold text-white text-base">Loan to Value (LTV)</h3>
+                <div className={`text-2xl font-bold shrink-0 ${currentLTV >= MAX_LTV ? 'text-pink-500 drop-shadow-[0_0_8px_rgba(236,72,153,0.5)]' : 'text-white'}`}>
+                  {currentLTV.toFixed(2)}%
+                </div>
               </div>
-              <div className="text-xs text-zinc-500 mt-1">max. {MAX_LTV.toFixed(2)}%</div>
+              <p className="text-xs text-zinc-400 mt-1">
+                Ratio of the collateral value to the borrowed value · max. {MAX_LTV.toFixed(2)}%
+              </p>
+            </div>
+
+            <div className="hidden sm:flex justify-between items-end">
+              <div>
+                <h3 className="font-semibold text-white text-lg">Loan to Value (LTV)</h3>
+                <p className="text-xs text-zinc-400 mt-1">Ratio of the collateral value to the borrowed value</p>
+              </div>
+              <div className="text-right">
+                <div className={`text-3xl font-bold ${currentLTV >= MAX_LTV ? 'text-pink-500 drop-shadow-[0_0_8px_rgba(236,72,153,0.5)]' : 'text-white'}`}>
+                  {currentLTV.toFixed(2)}%
+                </div>
+                <div className="text-xs text-zinc-500 mt-1">max. {MAX_LTV.toFixed(2)}%</div>
+              </div>
             </div>
           </div>
 
@@ -222,13 +243,13 @@ export default function EasyBorrowCard() {
             <div className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${getProgressColor(currentLTV)}`} style={{ width: `${Math.min(currentLTV, 100)}%` }}></div>
 
             <div className="absolute top-0 h-full border-l-2 border-indigo-400 z-10" style={{ left: `${SAFE_LTV}%` }}>
-              <div className="absolute -top-7 -left-8 text-[10px] font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/30 px-2 py-0.5 rounded shadow-sm whitespace-nowrap backdrop-blur-md">
+              <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-[9px] sm:text-[10px] font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/30 px-2 py-0.5 rounded shadow-sm whitespace-nowrap backdrop-blur-md">
                 Safe LTV ({SAFE_LTV}%)
               </div>
             </div>
 
             <div className="absolute top-0 h-full border-l-2 border-pink-500 z-10 shadow-[0_0_5px_rgba(236,72,153,0.8)]" style={{ left: `${MAX_LTV}%` }}>
-              <div className="absolute top-5 -left-6 text-[10px] font-bold text-pink-300 bg-pink-500/20 border border-pink-500/30 px-2 py-0.5 rounded whitespace-nowrap backdrop-blur-md">
+              <div className="absolute top-5 right-0 text-[9px] sm:text-[10px] font-bold text-pink-300 bg-pink-500/20 border border-pink-500/30 px-2 py-0.5 rounded whitespace-nowrap backdrop-blur-md">
                 Liquidation ({MAX_LTV}%)
               </div>
             </div>
@@ -242,10 +263,10 @@ export default function EasyBorrowCard() {
         </div>
 
         {/*Health Factor Card*/}
-        <div className="border border-white/10 rounded-2xl p-8 bg-black/40 shadow-inner mb-8 relative overflow-hidden z-10 font-sans">
+        <div className="border border-white/10 rounded-2xl p-4 sm:p-8 bg-black/40 shadow-inner mb-8 relative overflow-hidden z-10 font-sans">
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-white text-xl">Health factor</h3>
+              <h3 className="font-semibold text-white text-lg sm:text-xl">Health factor</h3>
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-zinc-500 hover:text-white transition-colors cursor-help">
                 <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.835a.05.05 0 0 0 .041.063h.041a.75.75 0 0 1 .632.964l-1.068 3.56a1.5 1.5 0 0 1-1.071 1.072zM12.75 9a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
               </svg>
@@ -257,7 +278,7 @@ export default function EasyBorrowCard() {
             </div>
           </div>
 
-          <div className="text-center text-7xl font-bold text-white mb-6">
+          <div className="text-center text-6xl sm:text-7xl font-bold text-white mb-6">
             {Number(currentHF || 0).toFixed(2)}
           </div>
 
@@ -288,7 +309,7 @@ export default function EasyBorrowCard() {
         <button
           onClick={buttonAction}
           disabled={buttonDisabled}
-          className={`w-full py-5 rounded-2xl font-bold text-xl transition-all duration-300 relative z-10 overflow-hidden ${buttonDisabled
+          className={`w-full py-4 sm:py-5 rounded-2xl font-bold text-lg sm:text-xl transition-all duration-300 relative z-10 overflow-hidden ${buttonDisabled
             ? 'bg-zinc-800/50 text-zinc-500 cursor-not-allowed border border-white/5'
             : 'bg-[#E6007A] hover:bg-pink-500 text-white shadow-[0_0_20px_rgba(230,0,122,0.4)] hover:shadow-[0_0_30px_rgba(236,72,153,0.6)]'
             }`}

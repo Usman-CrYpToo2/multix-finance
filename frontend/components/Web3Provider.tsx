@@ -53,11 +53,23 @@ if (typeof window !== 'undefined') {
       analytics: true
     },
     
+    // Both the --apkt-* and --w3m-* names are set: which pair this AppKit build
+    // reads depends on its internal theme layer, and the unused ones are ignored.
     themeVariables: {
-    "--apkt-accent": "#68389c", // Changes button color to red
-    "--apkt-color-mix": "#3b3640",
-    "--apkt-color-mix-strength": 40,
-  },
+      // Brand pink, so the navbar connect button matches the app instead of
+      // rendering in AppKit's default blue.
+      "--apkt-accent": "#E6007A",
+      "--w3m-accent": "#E6007A",
+      // Tint the modal toward the app's near-black background rather than a grey.
+      "--apkt-color-mix": "#09090b",
+      "--w3m-color-mix": "#09090b",
+      "--apkt-color-mix-strength": 20,
+      "--w3m-color-mix-strength": 20,
+      // Our own overlays (mobile nav drawer, withdraw/repay modals) sit at z-100/101,
+      // so the wallet modal has to outrank them or it opens behind them.
+      "--apkt-z-index": 999,
+      "--w3m-z-index": 999,
+    },
   })
 }
 

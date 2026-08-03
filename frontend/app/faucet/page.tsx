@@ -71,11 +71,11 @@ export default function FaucetPage() {
                 <div className="absolute top-0 right-0 w-64 h-64 bg-purple-600/10 blur-[100px] pointer-events-none rounded-full"></div>
 
                 <div className="relative z-10">
-                    <div className="flex justify-between items-center mb-2">
-                        <h2 className="text-2xl font-semibold text-white">Request WETH Airdrop</h2>
+                    <div className="flex justify-between items-center gap-3 flex-wrap mb-2">
+                        <h2 className="text-xl sm:text-2xl font-semibold text-white">Request WETH Airdrop</h2>
 
                         {/* Network Dropdown */}
-                        <div className="relative">
+                        <div className="relative shrink-0">
                             <select
                                 value={network}
                                 onChange={(e) => setNetwork(e.target.value)}

@@ -1,26 +1,56 @@
 @import "tailwindcss";
 
+/* The app is dark-only (the fixed backdrop in layout.tsx is #09090b). These have
+   to match it: this rule is unlayered, so it outranks Tailwind's layered
+   `bg-*` utilities on <body> and would otherwise show through as a light band
+   below the fold and on mobile overscroll. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #09090b;
+  --foreground: #ededed;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans-loaded), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #fff5f0;
+    --background: #09090b;
     --foreground: #ededed;
   }
+}
+
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+/* Reown AppKit's connect button stays its default blue even with `--w3m-accent`
+   set (Web3Provider): when a color-mix is configured, AppKit rewrites
+   `backgroundAccentPrimary` to mix from a `-base` token it snapshots from its
+   *defaults* before applying the accent, so the accent never reaches it.
+   Overriding the `-base` token feeds the brand pink into that same mix.
+   Doubled `:root:root` so this outranks AppKit's own runtime-injected `:root`
+   rule, which lands later in the document and would otherwise win. */
+:root:root {
+  --apkt-tokens-core-backgroundAccentPrimary-base: #e6007a;
+  /* Label colour for text sitting on those accent surfaces. AppKit defaults it
+     to black, which reads fine on its bright blue but not on the darker pink. */
+  --apkt-tokens-theme-textInvert: #ffffff;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans-loaded), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Large display numerals (TVL, health factor, LTV) read better with tabular,
+   non-lining-shifted figures so they don't jitter as values update. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
