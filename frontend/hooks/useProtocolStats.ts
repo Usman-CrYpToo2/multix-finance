@@ -12,13 +12,15 @@ const cdpAbi = [
 const POOLS = [
   { pool: CONTRACT_ADDRESSES.GBP_POOL, priceKey: 'gbpUsdPrice' as const },
   { pool: CONTRACT_ADDRESSES.USD_Pool, priceKey: 'usdUsdPrice' as const },
+  { pool: CONTRACT_ADDRESSES.EUR_POOL, priceKey: 'eurUsdPrice' as const },
+  { pool: CONTRACT_ADDRESSES.PKR_POOL, priceKey: 'pkrUsdPrice' as const },
 ];
 
 /** Live protocol-wide TVL/minted totals, read straight from both CDPEngines - same
  * source of truth the Markets page uses, so the landing page never shows a stale
  * or made-up number. */
 export function useProtocolStats() {
-  const { ethUsdPrice, gbpUsdPrice, usdUsdPrice, isLoading: pricesLoading } = useOraclePrices();
+  const { ethUsdPrice, gbpUsdPrice, usdUsdPrice, eurUsdPrice, pkrUsdPrice, isLoading: pricesLoading } = useOraclePrices();
 
   const { data, isLoading: readsLoading } = useReadContracts({
     contracts: POOLS.flatMap(({ pool }) => [
@@ -28,7 +30,7 @@ export function useProtocolStats() {
     query: { refetchInterval: 15000 },
   });
 
-  const fiatPrices = { gbpUsdPrice, usdUsdPrice };
+  const fiatPrices = { gbpUsdPrice, usdUsdPrice, eurUsdPrice, pkrUsdPrice };
 
   let tvlUsd = 0;
   let mintedUsd = 0;

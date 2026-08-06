@@ -21,6 +21,8 @@ export function useOraclePrices() {
       { chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'ethUsdPrice' },
       { chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'poolFxRates', args: [CONTRACT_ADDRESSES.GBP_POOL] },
       { chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'poolFxRates', args: [CONTRACT_ADDRESSES.USD_Pool] },
+      { chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'poolFxRates', args: [CONTRACT_ADDRESSES.EUR_POOL] },
+      { chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'poolFxRates', args: [CONTRACT_ADDRESSES.PKR_POOL] },
     ],
     query: { refetchInterval: 15000 },
   });
@@ -28,11 +30,15 @@ export function useOraclePrices() {
   const rawEth = data?.[0]?.result as bigint | undefined;
   const rawGbp = data?.[1]?.result as bigint | undefined;
   const rawUsd = data?.[2]?.result as bigint | undefined;
+  const rawEur = data?.[3]?.result as bigint | undefined;
+  const rawPkr = data?.[4]?.result as bigint | undefined;
 
   return {
     ethUsdPrice: rawEth ? Number(rawEth) / ORACLE_SCALE : 1000,
     gbpUsdPrice: rawGbp ? Number(rawGbp) / ORACLE_SCALE : 1.3,
     usdUsdPrice: rawUsd ? Number(rawUsd) / ORACLE_SCALE : 1.0,
+    eurUsdPrice: rawEur ? Number(rawEur) / ORACLE_SCALE : 1.08,
+    pkrUsdPrice: rawPkr ? Number(rawPkr) / ORACLE_SCALE : 0.0036,
     isLoading,
     refetchPrices: refetch,
   };

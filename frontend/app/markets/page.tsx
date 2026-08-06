@@ -37,6 +37,24 @@ const ASSET_CONFIG = [
     icon: '/icons/tokens/usd.svg',
     poolAddress: CONTRACT_ADDRESSES.USD_Pool,
     isCrossChain: true,
+  },
+  {
+    id: 'eur',
+    name: 'Euro Peg',
+    symbol: 'EUR',
+    color: 'bg-indigo-500',
+    icon: '/icons/tokens/euro.svg',
+    poolAddress: CONTRACT_ADDRESSES.EUR_POOL,
+    isCrossChain: true,
+  },
+  {
+    id: 'pkr',
+    name: 'Pakistani Rupee Peg',
+    symbol: 'PKR',
+    color: 'bg-emerald-600',
+    icon: '/icons/tokens/pkr.svg',
+    poolAddress: CONTRACT_ADDRESSES.PKR_POOL,
+    isCrossChain: true,
   }
 ];
 
@@ -61,7 +79,8 @@ export default function MarketsPage() {
     query: { refetchInterval: 3000 }
   });
 
-  const { ethUsdPrice: COLLATERAL_PRICE, gbpUsdPrice, usdUsdPrice } = useOraclePrices();
+  const { ethUsdPrice: COLLATERAL_PRICE, gbpUsdPrice, usdUsdPrice, eurUsdPrice, pkrUsdPrice } = useOraclePrices();
+  const fiatPrices: Record<string, number> = { gbp: gbpUsdPrice, usd: usdUsdPrice, eur: eurUsdPrice, pkr: pkrUsdPrice };
 
   // --- Process Data ---
   const { liveAssets, totalVlUsd, totalMintedUsd } = useMemo(() => {
@@ -81,7 +100,7 @@ export default function MarketsPage() {
       const numCollateral = rawCollateral ? Number(formatEther(rawCollateral)) : 0;
       const numDebt = rawDebt ? Number(formatEther(rawDebt)) : 0;
 
-      const fiatPrice = config.id === 'usd' ? usdUsdPrice : gbpUsdPrice;
+      const fiatPrice = fiatPrices[config.id];
       const collateralUsd = numCollateral * COLLATERAL_PRICE;
       const debtUsd = numDebt * fiatPrice;
 
@@ -109,7 +128,7 @@ export default function MarketsPage() {
     }
 
     return { liveAssets: mappedAssets, totalVlUsd: tvlSum, totalMintedUsd: mintedSum };
-  }, [contractData, COLLATERAL_PRICE, gbpUsdPrice, usdUsdPrice]);
+  }, [contractData, COLLATERAL_PRICE, gbpUsdPrice, usdUsdPrice, eurUsdPrice, pkrUsdPrice]);
 
   const openModal = (type: 'withdraw' | 'repay', asset: Asset, e?: React.MouseEvent) => {
     e?.stopPropagation();

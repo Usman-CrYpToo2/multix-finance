@@ -9,6 +9,7 @@ import { SOMNIA_CHAIN_ID } from '@/constants/chain';
 import { useEnsureChain } from '@/hooks/useEnsureChain';
 import { useGasBufferedWrite } from '@/hooks/useGasBufferedWrite';
 import { useOraclePrices } from '@/hooks/useOraclePrices';
+import { SUPPORTED_ASSETS } from '@/hooks/useVaultData';
 import { Asset } from '@/types/market';
 
 // --- Minimal ABIs ---
@@ -29,12 +30,15 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
   const [amount, setAmount] = useState('');
   const { address, isConnected } = useAccount();
 
-  // Route the correct addresses based on the selected asset
-  const isUSD = asset.symbol === 'USD';
-  const poolAddress = isUSD ? CONTRACT_ADDRESSES.USD_Pool : CONTRACT_ADDRESSES.GBP_POOL;
-  const stableAddress = isUSD ? CONTRACT_ADDRESSES.USD_Stable : CONTRACT_ADDRESSES.GBP_STABLE;
-  const { gbpUsdPrice, usdUsdPrice } = useOraclePrices();
-  const activePrice = isUSD ? usdUsdPrice : gbpUsdPrice;
+  // Route the correct addresses based on the selected asset - looked up by symbol
+  // instead of a hardcoded GBP/USD binary, which silently fell through to GBP's
+  // addresses for every other market (EUR, PKR, ...).
+  const marketConfig = SUPPORTED_ASSETS[asset.symbol as keyof typeof SUPPORTED_ASSETS];
+  const poolAddress = marketConfig.poolAddress;
+  const stableAddress = marketConfig.stableAddress;
+  const { gbpUsdPrice, usdUsdPrice, eurUsdPrice, pkrUsdPrice } = useOraclePrices();
+  const priceBySymbol: Record<string, number> = { GBP: gbpUsdPrice, USD: usdUsdPrice, EUR: eurUsdPrice, PKR: pkrUsdPrice };
+  const activePrice = priceBySymbol[asset.symbol];
 
   // --- Read: Fetch User Debt ---
   const { data: rawDebt, refetch } = useReadContract({

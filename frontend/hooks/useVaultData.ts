@@ -24,6 +24,22 @@ export const SUPPORTED_ASSETS = {
     icon: '/icons/tokens/usd.svg',
     poolAddress: CONTRACT_ADDRESSES.USD_Pool,
     stableAddress: CONTRACT_ADDRESSES.USD_Stable,
+  },
+
+  EUR: {
+    id: 'EUR',
+    symbol: 'EUR',
+    icon: '/icons/tokens/euro.svg',
+    poolAddress: CONTRACT_ADDRESSES.EUR_POOL,
+    stableAddress: CONTRACT_ADDRESSES.EUR_STABLE,
+  },
+
+  PKR: {
+    id: 'PKR',
+    symbol: 'PKR',
+    icon: '/icons/tokens/pkr.svg',
+    poolAddress: CONTRACT_ADDRESSES.PKR_POOL,
+    stableAddress: CONTRACT_ADDRESSES.PKR_STABLE,
   }
 } as const;
 
@@ -56,10 +72,11 @@ export function useVaultData() {
   const [autoRebalance, setAutoRebalance] = useState(false);
   const [txType, setTxType] = useState<'none' | 'approve' | 'deposit' | 'borrow'>('none');
 
-  const { ethUsdPrice: COLLATERAL_PRICE, gbpUsdPrice, usdUsdPrice } = useOraclePrices();
+  const { ethUsdPrice: COLLATERAL_PRICE, gbpUsdPrice, usdUsdPrice, eurUsdPrice, pkrUsdPrice } = useOraclePrices();
+  const assetPrices: Record<AssetKey, number> = { GBP: gbpUsdPrice, USD: usdUsdPrice, EUR: eurUsdPrice, PKR: pkrUsdPrice };
   const activeAsset = {
     ...SUPPORTED_ASSETS[selectedAssetId],
-    price: selectedAssetId === 'GBP' ? gbpUsdPrice : usdUsdPrice,
+    price: assetPrices[selectedAssetId],
   };
 
   // --- Blockchain Reads ---

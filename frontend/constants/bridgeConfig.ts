@@ -24,7 +24,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
   { key: 'sepolia', chainId: 11155111, domainId: 11155111, name: 'Ethereum Sepolia', nativeSymbol: 'ETH', letter: 'E', color: 'bg-indigo-500', icon: '/icons/chains/sepolia.svg' },
 ];
 
-export type BridgeTokenId = 'GBP' | 'USD';
+export type BridgeTokenId = 'GBP' | 'USD' | 'EUR' | 'PKR';
 
 export interface BridgeToken {
   id: BridgeTokenId;
@@ -72,6 +72,36 @@ export const BRIDGE_TOKENS: BridgeToken[] = [
     routers: {
       somnia: '0x4Cd08266375122fD5E5220e128F16b0aaF71580e',
       sepolia: '0x71fEe8094606B633a02e17Ed5e27C3A770f00e8b',
+    },
+  },
+  {
+    id: 'EUR',
+    symbol: 'EUR',
+    name: 'MultiX EUR Stablecoin',
+    color: 'bg-indigo-500',
+    icon: '/icons/tokens/euro.svg',
+    addresses: {
+      somnia: CONTRACT_ADDRESSES.EUR_STABLE as `0x${string}`,
+      sepolia: '0x57d485C5C227360a3B653432cC0A42956FBBb50c',
+    },
+    routers: {
+      somnia: '0x2286825A15b527d065cF3e0d9c45eCA866Ff5dd1',
+      sepolia: '0x57d485C5C227360a3B653432cC0A42956FBBb50c',
+    },
+  },
+  {
+    id: 'PKR',
+    symbol: 'PKR',
+    name: 'MultiX PKR Stablecoin',
+    color: 'bg-emerald-600',
+    icon: '/icons/tokens/pkr.svg',
+    addresses: {
+      somnia: CONTRACT_ADDRESSES.PKR_STABLE as `0x${string}`,
+      sepolia: '0xfc6596e2CD6db9C712ff3c5847c1a2BD2c8DF68c',
+    },
+    routers: {
+      somnia: '0xFd7b6E0Cf43739816aCf21dB7BD5361b80F88b86',
+      sepolia: '0xfc6596e2CD6db9C712ff3c5847c1a2BD2c8DF68c',
     },
   },
 ];

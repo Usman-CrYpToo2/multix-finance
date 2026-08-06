@@ -33,6 +33,8 @@ const FEATURES = [
 const MARKETS = [
   { id: 'GBP', name: 'Pound Sterling', icon: '/icons/tokens/gbp.svg', priceKey: 'gbpUsdPrice' as const },
   { id: 'USD', name: 'US Dollar', icon: '/icons/tokens/usd.svg', priceKey: 'usdUsdPrice' as const },
+  { id: 'EUR', name: 'Euro', icon: '/icons/tokens/euro.svg', priceKey: 'eurUsdPrice' as const },
+  { id: 'PKR', name: 'Pakistani Rupee', icon: '/icons/tokens/pkr.svg', priceKey: 'pkrUsdPrice' as const },
 ];
 
 /** Compact, exchange-style money formatting: $1.2M / $34.5K / $912.34 */
@@ -48,8 +50,8 @@ const short = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 export default function LandingPage() {
   const [isVisible, setIsVisible] = useState(false);
   const { tvlUsd, mintedUsd, marketCount } = useProtocolStats();
-  const { gbpUsdPrice, usdUsdPrice } = useOraclePrices();
-  const prices = { gbpUsdPrice, usdUsdPrice };
+  const { gbpUsdPrice, usdUsdPrice, eurUsdPrice, pkrUsdPrice } = useOraclePrices();
+  const prices = { gbpUsdPrice, usdUsdPrice, eurUsdPrice, pkrUsdPrice };
 
   useEffect(() => {
     const timer = setTimeout(() => setIsVisible(true), 60);
@@ -200,13 +202,13 @@ export default function LandingPage() {
               </Link>
             ))}
 
-            {/* The two live markets are the current state, not the ceiling. */}
+            {/* The live markets are the current state, not the ceiling. */}
             <div className="bg-[#0c0c0f] px-5 sm:px-7 py-5 flex items-center gap-4">
               <div className="w-10 h-10 rounded-full border border-dashed border-white/20 flex items-center justify-center shrink-0">
                 <Boxes size={16} className="text-zinc-600" />
               </div>
               <p className="text-sm text-zinc-500">
-                EUR, JPY and any other peg are one factory deployment away.
+                JPY and any other peg are one factory deployment away.
               </p>
             </div>
           </div>

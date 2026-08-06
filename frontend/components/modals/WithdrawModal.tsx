@@ -9,6 +9,7 @@ import { SOMNIA_CHAIN_ID } from '@/constants/chain';
 import { useEnsureChain } from '@/hooks/useEnsureChain';
 import { useGasBufferedWrite } from '@/hooks/useGasBufferedWrite';
 import { useOraclePrices } from '@/hooks/useOraclePrices';
+import { SUPPORTED_ASSETS } from '@/hooks/useVaultData';
 import { Asset } from '@/types/market';
 
 // --- Minimal ABIs ---
@@ -30,10 +31,12 @@ export const WithdrawModal = ({ asset, onClose }: WithdrawModalProps) => {
     const [amount, setAmount] = useState('');
     const { address, isConnected } = useAccount();
 
-    // Route to the correct pool based on the asset selected in the Markets table
-    const isUSD = asset.symbol === 'USD';
-    const poolAddress = isUSD ? CONTRACT_ADDRESSES.USD_Pool : CONTRACT_ADDRESSES.GBP_POOL;
-    const stableAddress = isUSD ? CONTRACT_ADDRESSES.USD_Stable : CONTRACT_ADDRESSES.GBP_STABLE;
+    // Route to the correct pool based on the asset selected in the Markets table -
+    // looked up by symbol instead of a hardcoded GBP/USD binary, which silently fell
+    // through to GBP's addresses for every other market (EUR, PKR, ...).
+    const marketConfig = SUPPORTED_ASSETS[asset.symbol as keyof typeof SUPPORTED_ASSETS];
+    const poolAddress = marketConfig.poolAddress;
+    const stableAddress = marketConfig.stableAddress;
     const { ethUsdPrice: COLLATERAL_PRICE } = useOraclePrices();
 
     // --- Blockchain Reads ---
