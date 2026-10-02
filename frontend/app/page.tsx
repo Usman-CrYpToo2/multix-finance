@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { ArrowUpRight, Boxes, Radio, ShieldHalf, Waypoints } from 'lucide-react';
 import { useProtocolStats } from '@/hooks/useProtocolStats';
 import { useOraclePrices } from '@/hooks/useOraclePrices';
-import { CONTRACT_ADDRESSES } from '@/constants/addresses';
+import { CONTRACT_ADDRESSES } from '@/constants/contracts';
+import { PROTOCOL_CHAIN_ID, PROTOCOL_NETWORK_NAME } from '@/constants/chain';
 
 const FEATURES = [
   {
@@ -323,8 +324,8 @@ export default function LandingPage() {
             <div>
               <div className="text-xs font-medium uppercase tracking-[0.12em] text-zinc-500">Network</div>
               <ul className="mt-4 space-y-2.5 text-sm text-zinc-400">
-                <li>Somnia Testnet</li>
-                <li className="tabular">Chain ID 50312</li>
+                <li>{PROTOCOL_NETWORK_NAME}</li>
+                <li className="tabular">Chain ID {PROTOCOL_CHAIN_ID}</li>
               </ul>
             </div>
           </div>

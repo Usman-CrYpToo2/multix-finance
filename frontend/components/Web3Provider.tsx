@@ -5,8 +5,9 @@ import { createAppKit } from '@reown/appkit/react'
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
-import { mainnet, sepolia, somniaTestnet } from '@reown/appkit/networks'
+import { foundry, mainnet, sepolia, somniaTestnet } from '@reown/appkit/networks'
 import type { AppKitNetwork } from '@reown/appkit/networks'
+import { IS_LOCAL_NETWORK } from '@/constants/chain'
 
 // Setup queryClient
 const queryClient = new QueryClient()
@@ -30,9 +31,12 @@ const metadata = {
 // Somnia Testnet is first so it's the default network AppKit connects to -
 // that's where the MultiX protocol (Factory/Router/CDPEngine/Stablecoins) is
 // actually deployed. mainnet/sepolia are kept around for the Sepolia side of
-// the Hyperlane bridge (see hyperlane/README.md); foundry/local-anvil was
-// removed since the protocol no longer lives there.
-const networks: [AppKitNetwork, ...AppKitNetwork[]] = [somniaTestnet, sepolia, mainnet]
+// the Hyperlane bridge (see hyperlane/README.md). With `npm run dev:local` the
+// protocol lives on a local anvil node instead (see deploy-local.sh), so
+// foundry (31337) goes first; Somnia/Sepolia stay so the bridge page still loads.
+const networks: [AppKitNetwork, ...AppKitNetwork[]] = IS_LOCAL_NETWORK
+  ? [foundry, somniaTestnet, sepolia]
+  : [somniaTestnet, sepolia, mainnet]
 
 // 4. Create the Wagmi Adapter
 const wagmiAdapter = new WagmiAdapter({

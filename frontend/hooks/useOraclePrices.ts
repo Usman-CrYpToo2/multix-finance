@@ -1,6 +1,6 @@
 import { useReadContracts } from 'wagmi';
-import { CONTRACT_ADDRESSES } from '@/constants/addresses';
-import { SOMNIA_CHAIN_ID } from '@/constants/chain';
+import { CONTRACT_ADDRESSES } from '@/constants/contracts';
+import { PROTOCOL_CHAIN_ID } from '@/constants/chain';
 
 // Matches HybridFiatPriceFeed's fixed `decimals` constant (8).
 const ORACLE_SCALE = 1e8;
@@ -18,11 +18,11 @@ const oracleAbi = [
 export function useOraclePrices() {
   const { data, refetch, isLoading } = useReadContracts({
     contracts: [
-      { chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'ethUsdPrice' },
-      { chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'poolFxRates', args: [CONTRACT_ADDRESSES.GBP_POOL] },
-      { chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'poolFxRates', args: [CONTRACT_ADDRESSES.USD_Pool] },
-      { chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'poolFxRates', args: [CONTRACT_ADDRESSES.EUR_POOL] },
-      { chainId: SOMNIA_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'poolFxRates', args: [CONTRACT_ADDRESSES.PKR_POOL] },
+      { chainId: PROTOCOL_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'ethUsdPrice' },
+      { chainId: PROTOCOL_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'poolFxRates', args: [CONTRACT_ADDRESSES.GBP_POOL] },
+      { chainId: PROTOCOL_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'poolFxRates', args: [CONTRACT_ADDRESSES.USD_Pool] },
+      { chainId: PROTOCOL_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'poolFxRates', args: [CONTRACT_ADDRESSES.EUR_POOL] },
+      { chainId: PROTOCOL_CHAIN_ID, address: CONTRACT_ADDRESSES.ORACLE, abi: oracleAbi, functionName: 'poolFxRates', args: [CONTRACT_ADDRESSES.PKR_POOL] },
     ],
     query: { refetchInterval: 15000 },
   });

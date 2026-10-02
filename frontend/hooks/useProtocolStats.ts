@@ -1,7 +1,7 @@
 import { useReadContracts } from 'wagmi';
 import { formatEther } from 'viem';
-import { CONTRACT_ADDRESSES } from '@/constants/addresses';
-import { SOMNIA_CHAIN_ID } from '@/constants/chain';
+import { CONTRACT_ADDRESSES } from '@/constants/contracts';
+import { PROTOCOL_CHAIN_ID } from '@/constants/chain';
 import { useOraclePrices } from '@/hooks/useOraclePrices';
 
 const cdpAbi = [
@@ -24,8 +24,8 @@ export function useProtocolStats() {
 
   const { data, isLoading: readsLoading } = useReadContracts({
     contracts: POOLS.flatMap(({ pool }) => [
-      { chainId: SOMNIA_CHAIN_ID, address: pool as `0x${string}`, abi: cdpAbi, functionName: 'getTotalCollateral' },
-      { chainId: SOMNIA_CHAIN_ID, address: pool as `0x${string}`, abi: cdpAbi, functionName: 'getTotalDebt' },
+      { chainId: PROTOCOL_CHAIN_ID, address: pool as `0x${string}`, abi: cdpAbi, functionName: 'getTotalCollateral' },
+      { chainId: PROTOCOL_CHAIN_ID, address: pool as `0x${string}`, abi: cdpAbi, functionName: 'getTotalDebt' },
     ]),
     query: { refetchInterval: 15000 },
   });

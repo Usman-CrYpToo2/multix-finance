@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import { X, ArrowUpToLine, ShieldCheck } from 'lucide-react';
 import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt } from 'wagmi';
 import { erc20Abi, formatEther, parseEther } from 'viem';
-import { CONTRACT_ADDRESSES } from '@/constants/addresses';
-import { SOMNIA_CHAIN_ID } from '@/constants/chain';
+import { CONTRACT_ADDRESSES } from '@/constants/contracts';
+import { PROTOCOL_CHAIN_ID } from '@/constants/chain';
 import { useEnsureChain } from '@/hooks/useEnsureChain';
 import { useGasBufferedWrite } from '@/hooks/useGasBufferedWrite';
 import { useOraclePrices } from '@/hooks/useOraclePrices';
@@ -42,7 +42,7 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
 
   // --- Read: Fetch User Debt ---
   const { data: rawDebt, refetch } = useReadContract({
-    chainId: SOMNIA_CHAIN_ID,
+    chainId: PROTOCOL_CHAIN_ID,
     address: poolAddress as `0x${string}`,
     abi: cdpAbi,
     functionName: 'getUserDebt',
@@ -58,7 +58,7 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
   // out) without reducing debt. Repaying more than this reverts on-chain every time. ---
   const { data: balanceData, refetch: refetchBalance } = useReadContracts({
     contracts: [
-      { chainId: SOMNIA_CHAIN_ID, address: stableAddress as `0x${string}`, abi: erc20Abi, functionName: 'balanceOf', args: address ? [address] : undefined },
+      { chainId: PROTOCOL_CHAIN_ID, address: stableAddress as `0x${string}`, abi: erc20Abi, functionName: 'balanceOf', args: address ? [address] : undefined },
     ],
     query: { enabled: !!address },
   });
@@ -72,9 +72,9 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
   const isExceedingBalance = !isExceedingDebt && numRepay > userBalance;
 
   // --- Write: Execute Repayment ---
-  const { data: hash, writeWithGas, isPending, error: writeError } = useGasBufferedWrite(SOMNIA_CHAIN_ID);
+  const { data: hash, writeWithGas, isPending, error: writeError } = useGasBufferedWrite(PROTOCOL_CHAIN_ID);
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
-  const { ensure: ensureOnSomnia, switchError } = useEnsureChain(SOMNIA_CHAIN_ID);
+  const { ensure: ensureOnSomnia, switchError } = useEnsureChain(PROTOCOL_CHAIN_ID);
 
   // Auto-close modal after success
   useEffect(() => {
@@ -93,7 +93,7 @@ export const RepayModal = ({ asset, onClose }: RepayModalProps) => {
     if (!address || numRepay <= 0 || isExceedingDebt || isExceedingBalance) return;
     if (!(await ensureOnSomnia())) return;
     writeWithGas({
-      chainId: SOMNIA_CHAIN_ID,
+      chainId: PROTOCOL_CHAIN_ID,
       address: CONTRACT_ADDRESSES.ROUTER as `0x${string}`,
       abi: routerAbi,
       functionName: 'repayFiat',

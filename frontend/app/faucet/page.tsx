@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import { Link2 } from 'lucide-react';
 import { useAccount, useWaitForTransactionReceipt } from 'wagmi';
 import { parseEther } from 'viem';
-import { CONTRACT_ADDRESSES } from '@/constants/addresses';
-import { SOMNIA_CHAIN_ID } from '@/constants/chain';
+import { CONTRACT_ADDRESSES } from '@/constants/contracts';
+import { PROTOCOL_CHAIN_ID } from '@/constants/chain';
 import { useEnsureChain } from '@/hooks/useEnsureChain';
 import { useGasBufferedWrite } from '@/hooks/useGasBufferedWrite';
 
@@ -26,9 +26,9 @@ export default function FaucetPage() {
 
     // --Hooks ---
     const { address } = useAccount();
-    const { writeWithGas, data: hash, isPending, reset, error: writeError } = useGasBufferedWrite(SOMNIA_CHAIN_ID);
+    const { writeWithGas, data: hash, isPending, reset, error: writeError } = useGasBufferedWrite(PROTOCOL_CHAIN_ID);
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
-    const { ensure: ensureOnSomnia, switchError } = useEnsureChain(SOMNIA_CHAIN_ID);
+    const { ensure: ensureOnSomnia, switchError } = useEnsureChain(PROTOCOL_CHAIN_ID);
 
     // Clear the input box 
     useEffect(() => {
@@ -47,7 +47,7 @@ export default function FaucetPage() {
         if (!walletAddress) return;
         if (!(await ensureOnSomnia())) return;
         writeWithGas({
-            chainId: SOMNIA_CHAIN_ID,
+            chainId: PROTOCOL_CHAIN_ID,
             address: CONTRACT_ADDRESSES.WETH,
             abi: wethAbi,
             functionName: 'mint',
